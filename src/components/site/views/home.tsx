@@ -67,6 +67,12 @@ function Hero() {
   const h = settings.home;
   const reduce = useReducedMotion();
 
+  // meta strip → split the data-driven string into segments with volt dot separators
+  const heroMetaParts = (h.heroMeta ?? "")
+    .split("/")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
   // mouse parallax for the media stack (desktop only)
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
@@ -88,10 +94,17 @@ function Hero() {
         my.set((e.clientY / window.innerHeight - 0.5) * 14);
       }}
     >
-      {/* backdrop */}
-      <div className="bg-grid-dark absolute inset-0" aria-hidden="true" />
-      <div className="absolute -top-32 right-[-10%] h-[560px] w-[560px] rounded-full bg-volt/[0.07] blur-[160px]" aria-hidden="true" />
-      <div className="absolute bottom-0 left-[-10%] h-[300px] w-[400px] rounded-full bg-volt/[0.04] blur-[120px]" aria-hidden="true" />
+      {/* backdrop — grid fades toward the edges for a cinematic vignette */}
+      <div
+        className="bg-grid-dark absolute inset-0"
+        style={{
+          WebkitMaskImage: "radial-gradient(ellipse 80% 70% at 50% 38%, black 30%, transparent 78%)",
+          maskImage: "radial-gradient(ellipse 80% 70% at 50% 38%, black 30%, transparent 78%)",
+        }}
+        aria-hidden="true"
+      />
+      <div className="absolute -top-32 right-[-6%] h-[620px] w-[620px] rounded-full bg-volt/[0.08] blur-[160px]" aria-hidden="true" />
+      <div className="absolute bottom-0 left-[-10%] h-[300px] w-[400px] rounded-full bg-volt/[0.05] blur-[120px]" aria-hidden="true" />
 
       <motion.div style={reduce ? undefined : { y: heroY, opacity: heroOpacity }} className="container-x relative z-10">
         <div className="grid items-center gap-14 lg:grid-cols-12 lg:gap-8">
@@ -142,7 +155,7 @@ function Hero() {
               className="mt-9 flex flex-wrap items-center gap-4"
             >
               <Magnetic>
-                <VoltButton href="/contact" size="lg">
+                <VoltButton href="/contact" size="lg" className="shadow-[0_14px_44px_-14px_rgba(198,255,58,0.55)]">
                   {h.ctaPrimary}
                 </VoltButton>
               </Magnetic>
@@ -155,9 +168,14 @@ function Hero() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.8, delay: 0.7 }}
-              className="mt-10 font-display text-[11px] uppercase tracking-[0.22em] text-ivory/35"
+              className="mt-10 flex flex-wrap items-center gap-x-3.5 gap-y-2 font-display text-[11px] uppercase tracking-[0.22em] text-ivory/40"
             >
-              {h.heroMeta}
+              {heroMetaParts.map((part, i) => (
+                <span key={i} className="flex items-center gap-3.5">
+                  {i > 0 ? <span className="h-1 w-1 rounded-full bg-volt/80" aria-hidden="true" /> : null}
+                  {part}
+                </span>
+              ))}
             </motion.p>
           </div>
 
@@ -168,40 +186,55 @@ function Hero() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 1, delay: 0.35, ease: EASE }}
           >
-            <motion.div style={reduce ? undefined : { x: sx, y: sy }} className="relative">
+            <motion.div style={reduce ? undefined : { x: sx, y: sy }} className="relative mx-auto w-full max-w-[560px]">
+              {/* ambient volt glow — lifts the stack off the ink backdrop */}
+              <div aria-hidden="true" className="absolute -inset-10 rounded-[2.5rem] bg-volt/[0.07] blur-[70px]" />
+
+              {/* technical crosshairs — editorial corner marks */}
+              <span aria-hidden="true" className="absolute -left-6 -top-6 hidden select-none font-display text-xl leading-none text-ivory/25 sm:block">+</span>
+              <span aria-hidden="true" className="absolute -bottom-6 -right-6 hidden select-none font-display text-xl leading-none text-ivory/25 sm:block">+</span>
+
               {/* offset accent frame — volt outline echoing the brand system */}
               <div
                 aria-hidden="true"
-                className="absolute -right-3 -top-3 hidden h-full w-full rounded-2xl border border-volt/25 sm:block"
+                className="absolute -right-3.5 -top-3.5 hidden h-full w-full rounded-2xl border border-volt/30 sm:block"
               />
               {/* main frame — website work */}
-              <div className="relative overflow-hidden rounded-2xl border border-ivory/10 shadow-[0_50px_100px_-30px_rgba(0,0,0,0.85)]">
-                <MediaFrame src={h.heroMediaMain} alt="Selected website work preview" ratio="4/3.2" className="rounded-2xl">
+              <div className="relative overflow-hidden rounded-2xl border border-ivory/15 shadow-[0_50px_100px_-30px_rgba(0,0,0,0.85)]">
+                <MediaFrame src={h.heroMediaMain} alt="Selected website work preview" ratio="4/3.4" className="rounded-2xl">
                   {/* browser chrome */}
                   <div className="absolute inset-x-0 top-0 flex items-center gap-1.5 border-b border-ivory/10 bg-ink/70 px-4 py-2.5 backdrop-blur-sm">
                     <span className="h-2 w-2 rounded-full bg-ivory/25" aria-hidden="true" />
                     <span className="h-2 w-2 rounded-full bg-ivory/25" aria-hidden="true" />
                     <span className="h-2 w-2 rounded-full bg-volt/70" aria-hidden="true" />
-                    <span className="ml-3 h-4 flex-1 rounded-full bg-ivory/10" aria-hidden="true" />
+                    <span className="ml-3 flex h-4 flex-1 items-center rounded-full bg-ivory/10 px-2.5" aria-hidden="true">
+                      <span className="h-1 w-14 rounded-full bg-ivory/25" />
+                    </span>
                   </div>
+                  {/* cinematic blend into the ink backdrop */}
+                  <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-ink/85 via-ink/25 to-transparent" />
+                  <div aria-hidden="true" className="pointer-events-none absolute inset-0 shadow-[inset_0_0_90px_rgba(11,11,12,0.4)]" />
                 </MediaFrame>
               </div>
 
               {/* reel card — video work */}
               <motion.div
-                className="absolute -bottom-10 -left-4 w-32 sm:-left-8 sm:w-40"
+                className="absolute -bottom-8 -left-3 w-28 sm:-bottom-10 sm:-left-7 sm:w-36"
                 style={reduce ? undefined : { x: sxInvert, y: syInvert }}
               >
-                <div className="overflow-hidden rounded-xl border border-ivory/15 shadow-[0_24px_50px_-20px_rgba(0,0,0,0.9)]">
-                  <MediaFrame src={h.heroMediaSecondary} alt="Video editing work preview" ratio="9/16" className="rounded-xl">
-                    <div className="absolute inset-0 bg-gradient-to-t from-ink/60 via-transparent to-transparent" aria-hidden="true" />
-                    <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-volt px-2 py-0.5 font-display text-[9px] font-bold uppercase tracking-widest text-ink">
-                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink" aria-hidden="true" /> Reel
-                    </span>
-                    <span className="absolute bottom-2 left-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-ivory/90">
-                      <Play className="ml-0.5 h-3 w-3 fill-ink text-ink" aria-hidden="true" />
-                    </span>
-                  </MediaFrame>
+                <div className="group/reel relative">
+                  <div aria-hidden="true" className="absolute -inset-3.5 rounded-2xl bg-volt/[0.16] blur-xl" />
+                  <div className="relative overflow-hidden rounded-xl border border-ivory/15 shadow-[0_24px_50px_-20px_rgba(0,0,0,0.9)] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/reel:-translate-y-1.5">
+                    <MediaFrame src={h.heroMediaSecondary} alt="Video editing work preview" ratio="9/16" className="rounded-xl">
+                      <div className="absolute inset-0 bg-gradient-to-t from-ink/60 via-transparent to-transparent" aria-hidden="true" />
+                      <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-volt px-2 py-0.5 font-display text-[9px] font-bold uppercase tracking-widest text-ink">
+                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink" aria-hidden="true" /> Reel
+                      </span>
+                      <span className="absolute bottom-2 left-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-volt shadow-[0_0_18px_-4px_rgba(198,255,58,0.8)]">
+                        <Play className="ml-0.5 h-3 w-3 fill-ink text-ink" aria-hidden="true" />
+                      </span>
+                    </MediaFrame>
+                  </div>
                 </div>
               </motion.div>
 
@@ -221,15 +254,15 @@ function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.2, duration: 0.8 }}
-          className="mt-20 hidden items-center gap-3 lg:flex"
+          className="mt-16 hidden items-center gap-3 lg:flex"
           aria-hidden="true"
         >
-          <span className="font-display text-[10px] uppercase tracking-[0.25em] text-ivory/30">Scroll</span>
-          <span className="relative h-px w-16 overflow-hidden bg-ivory/15">
+          <span className="font-display text-[10px] uppercase tracking-[0.25em] text-ivory/40">Scroll</span>
+          <span className="relative h-px w-20 overflow-hidden bg-ivory/15">
             <motion.span
               className="absolute inset-y-0 left-0 w-1/2 bg-volt"
-              animate={reduce ? undefined : { x: [0, 64] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+              animate={reduce ? undefined : { x: [0, 80] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
             />
           </span>
         </motion.div>

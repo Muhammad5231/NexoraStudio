@@ -249,3 +249,21 @@ Work Log:
 Stage Summary:
 - Gallery feature complete end-to-end, zero existing features removed; Work = websites only (reversible toggle), Gallery = video+photo with hard server-enforced limits
 - Storage: local public/uploads/gallery (documented: ephemeral hosts need a managed provider later — abstraction point is file-validation.ts + upload route)
+
+---
+Task ID: 9
+Agent: main (Z.ai Code)
+Task: Polish the hero section UI design (per user screenshot feedback).
+
+Work Log:
+- Audited hero render against the user's 1440px screenshot; identified weak points: dead space around the laptop media, hard image edges against the ink backdrop, reel card covering the laptop screen, uniform grid backdrop, plain meta strip, oversized scroll-cue gap.
+- Refined media stack (src/components/site/views/home.tsx): ambient volt glow behind the stack, editorial "+" crosshair corner marks, offset volt accent frame strengthened (border-volt/30), main frame ratio 4/3.2 → 4/3.4 + max-w-[560px] to fill the column, browser chrome upgraded with a URL pill, cinematic bottom gradient + inset vignette so the photo melts into the ink background, reel card repositioned (-bottom-10 -left-7 sm) so the laptop screen stays visible, volt glow ring + volt play button + hover lift on the reel.
+- Copy column: primary CTA now carries a soft volt glow shadow; heroMeta string is split on "/" into segments separated by volt dots (fully data-driven, defensive ?? "" fallback); scroll cue tightened (mt-16, w-20 line, ivory/40 label).
+- Backdrop: grid now fades via radial-gradient mask-image (inline style with -webkit- prefix for Safari), volt ambient glows slightly strengthened.
+- Hit a stale-CSS issue: Turbopack served an old CSS chunk missing the new negative-offset utilities (-bottom-8/-left-3/sm:-bottom-10/sm:-left-7), so the reel rendered in static flow and was clipped by the marquee. Diagnosed via CSSOM recursion scan (no matching rules) + bounding-box measurement; fixed by killing the dev server, clearing .next, and restarting.
+- Verified with agent-browser: desktop 1440 (reel overlaps frame by 213px, extends exactly -40px below), tablet 768 (stacked single-column layout holds), mobile 375 (reel within viewport, chip/crosshairs correctly hidden via sm: guards). Gallery nav click still routes to #/gallery (expected curated-empty state). agent-browser errors: none; dev.log clean; eslint + tsc --noEmit (src) both pass.
+
+Stage Summary:
+- Hero is now a layered cinematic composition: volt-glow media stack with crosshair details, blended image edges, data-driven volt-dot meta strip, glowing primary CTA, vignetted grid — all respecting prefers-reduced-motion and existing brand tokens (ink/ivory/volt, Space Grotesk).
+- Root cause class established: Turbopack can serve stale Tailwind CSS chunks after class-string changes; remedy = restart dev server with a cleared .next when newly added utilities silently don't apply.
+- No DB or settings changes; all content remains data-driven from settings.home.
