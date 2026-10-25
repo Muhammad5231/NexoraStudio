@@ -26,7 +26,7 @@ function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-ink bg-grid-dark px-4 py-10">
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-ink bg-grid-dark px-4 py-10 text-ivory">
       <div className="w-full max-w-md">
         <Link href="/" className="group mb-8 flex items-center gap-2.5" aria-label="Back to site">
           <span className="flex size-9 items-center justify-center rounded-lg bg-volt font-display text-lg font-bold text-ink transition-transform group-hover:scale-105">

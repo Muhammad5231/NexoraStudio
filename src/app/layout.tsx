@@ -48,7 +48,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${spaceGrotesk.variable} ${inter.variable} antialiased bg-ink text-ivory`}
+        // Dark page background (public theme + overscroll colour), but the
+        // inherited TEXT colour stays the neutral foreground token: the admin
+        // panel and portaled dialogs/sheets/selects render on light surfaces
+        // and must never inherit the site's ivory text. The public site
+        // re-declares `text-ivory` on its own dark wrapper (site-shell.tsx).
+        className={`${spaceGrotesk.variable} ${inter.variable} antialiased bg-ink text-foreground`}
       >
         {children}
         <Toaster

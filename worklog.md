@@ -168,3 +168,17 @@ Work Log:
 
 Stage Summary:
 - 26 bugs fixed across frontend + backend, all verified in-browser. Project remains zero-credential on first run (owner bootstraps at #/admin). No schema changes; no new dependencies.
+---
+Task ID: 5 (admin readability hotfix)
+Agent: orchestrator (main)
+Task: Fix admin UI text-field readability problems reported via screenshots (inputs, Quick actions buttons, Upload buttons nearly invisible).
+
+Work Log:
+- Root cause: root layout `<body>` carried `bg-ink text-ivory` (dark public theme). The admin panel's light surfaces (`bg-[#F4F3EF]` shell, white AdminCards) and every Radix-ported surface (Sheet/Dialog/Select) never reset the inherited text colour, so inputs, textareas, outline/ghost buttons rendered warm-white (#f2efe7) text on white — near-invisible. Elements with explicit colours (text-ink labels, text-graphite hints) were unaffected, matching the screenshots exactly.
+- Fix (4 files): layout.tsx body is now `bg-ink text-foreground` (dark page bg retained for public theme/overscroll, neutral inherited text for light surfaces); site-shell.tsx public wrapper gains `text-ivory` (public site inheritance unchanged, zero regression); AdminShell root declares `text-ink` explicitly; AuthShell root declares `text-ivory` explicitly.
+- Audited every `bg-ink` surface in admin + public for inherited-text reliance before changing (StatusBadge WON, CATEGORY_CLASS, sidebar, mobile header/sheet, buttons — all set explicit light text; safe).
+- BROWSER VERIFIED (agent-browser, desktop 1440 + mobile 375): public home + contact hero/form unchanged and readable; admin login screen; dashboard Quick actions "New service"/"Edit site settings" now near-black readable; Settings Brand tab ("NEXORA STUDIO", tagline) and Home tab (kicker/titles/subtitle/media paths/Upload buttons) all solid near-black; project editor (values, placeholders, selects); portaled Select dropdown; portaled Leads detail sheet (status select, follow-up date, notes placeholder); mobile admin settings + dark nav sheet. Zero console errors.
+- QA account (qa-contrast@nexora-test.local) created for authenticated verification, then DELETED — only the owner account remains. Lint clean; `tsc --noEmit` clean for src/ (0 errors); dev.log clean.
+
+Stage Summary:
+- Root cause was a global inherited text colour (body text-ivory) leaking into light admin surfaces; fixed at the body level with explicit theme declarations on each shell. Public site pixel-identical; admin inputs/buttons/dialogs/sheets now fully readable on desktop and mobile.

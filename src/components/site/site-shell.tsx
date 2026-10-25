@@ -141,7 +141,7 @@ export function SiteShell({ initial }: { initial: SiteData }) {
 
   return (
     <SiteProvider data={content}>
-      <div className="flex min-h-screen flex-col bg-ink">
+      <div className="flex min-h-screen flex-col bg-ink text-ivory">
         <Nav />
         <main className="flex-1">
           <AnimatePresence mode="wait" initial={false}>

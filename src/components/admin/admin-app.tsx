@@ -213,7 +213,7 @@ function AdminShell({
   );
 
   return (
-    <div className="min-h-screen bg-[#F4F3EF]">
+    <div className="min-h-screen bg-[#F4F3EF] text-ink">
       {/* desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 bg-ink bg-grid-dark lg:block" aria-label="Admin sidebar">
         {sidebarBody()}
