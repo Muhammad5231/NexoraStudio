@@ -370,7 +370,8 @@ export function ServiceEditor({ id }: { id?: string }) {
       if (isNew) {
         const res = await api<{ service: Service }>("api/services", { body, admin: true });
         toast.success("Service saved");
-        navigate(`/admin/services/${res.service.id}`);
+        // replace: Back must never return to the dead /new editor
+        navigate(`/admin/services/${res.service.id}`, { replace: true });
       } else {
         await api<{ service: Service }>(`api/services/${id}`, { method: "PATCH", body, admin: true });
         toast.success("Service saved");

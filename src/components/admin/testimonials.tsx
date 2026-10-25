@@ -97,13 +97,13 @@ export function TestimonialsView() {
 
   async function togglePublished(t: Testimonial, published: boolean) {
     setToggling(t.id);
-    const prev = items;
     setItems((list) => list.map((x) => (x.id === t.id ? { ...x, published } : x)));
     try {
       await api<{ testimonial: Testimonial }>(`api/testimonials/${t.id}`, { method: "PATCH", body: { published }, admin: true });
       toast.success(published ? "Testimonial published" : "Testimonial hidden");
     } catch (err) {
-      setItems(prev);
+      // per-row revert — never roll back unrelated concurrent toggles
+      setItems((list) => list.map((x) => (x.id === t.id ? { ...x, published: t.published } : x)));
       onApiError(err);
     } finally {
       setToggling(null);

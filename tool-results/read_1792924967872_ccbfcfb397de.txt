@@ -1,0 +1,602 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useState, type FormEvent } from "react";
+     4→import { api } from "@/lib/api-client";
+     5→import type { Settings } from "@/lib/types";
+     6→import { Button } from "@/components/ui/button";
+     7→import { Input } from "@/components/ui/input";
+     8→import { Label } from "@/components/ui/label";
+     9→import { Textarea } from "@/components/ui/textarea";
+    10→import { Skeleton } from "@/components/ui/skeleton";
+    11→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    12→import { toast } from "sonner";
+    13→import { AdminCard, CardHead, ErrorNote, PageHead, Spin } from "./admin-ui";
+    14→import { useAdmin } from "./admin-context";
+    15→import { PASSWORD_RE } from "./admin-utils";
+    16→import {
+    17→  CountedTextarea,
+    18→  Field,
+    19→  MediaField,
+    20→  ProcessStepsField,
+    21→  StatsField,
+    22→  StringListField,
+    23→  type ProcessStep,
+    24→  type StatRow,
+    25→} from "./fields";
+    26→
+    27→// ---------------------------------------------------------------------------
+    28→// Settings — every public copy deck section, one tab each, plus the account
+    29→// (password) tab. Each tab saves its own section via PUT /api/settings.
+    30→// ---------------------------------------------------------------------------
+    31→
+    32→export function SettingsView() {
+    33→  const [settings, setSettings] = useState<Settings | null>(null);
+    34→  const [loading, setLoading] = useState(true);
+    35→  const [error, setError] = useState<string | null>(null);
+    36→
+    37→  const { onApiError } = useAdmin();
+    38→  const loadStable = useCallback(async () => {
+    39→    setLoading(true);
+    40→    setError(null);
+    41→    try {
+    42→      const res = await api<{ settings: Settings }>("api/settings", { admin: true });
+    43→      setSettings(res.settings);
+    44→    } catch (err) {
+    45→      if (onApiError(err)) return;
+    46→      setError(err instanceof Error ? err.message : "Could not load settings.");
+    47→    } finally {
+    48→      setLoading(false);
+    49→    }
+    50→  }, [onApiError]);
+    51→
+    52→  useEffect(() => {
+    53→    void loadStable();
+    54→  }, [loadStable]);
+    55→
+    56→  if (loading) {
+    57→    return (
+    58→      <div>
+    59→        <PageHead title="Settings" desc="Everything editable on the public site." />
+    60→        <div className="space-y-4">
+    61→          <Skeleton className="h-10 w-full max-w-xl" />
+    62→          <Skeleton className="h-64 w-full" />
+    63→        </div>
+    64→      </div>
+    65→    );
+    66→  }
+    67→
+    68→  if (error || !settings) {
+    69→    return (
+    70→      <div className="space-y-4">
+    71→        <ErrorNote message={error ?? "Settings unavailable."} />
+    72→        <Button variant="outline" onClick={() => void loadStable()}>
+    73→          Try again
+    74→        </Button>
+    75→      </div>
+    76→    );
+    77→  }
+    78→
+    79→  return (
+    80→    <div>
+    81→      <PageHead title="Settings" desc="Everything editable on the public site — saved per section." />
+    82→      <Tabs defaultValue="brand">
+    83→        <TabsList className="mb-5 h-auto w-full flex-wrap justify-start gap-1 bg-ink/5 p-1">
+    84→          <TabsTrigger value="brand">Brand</TabsTrigger>
+    85→          <TabsTrigger value="contact">Contact</TabsTrigger>
+    86→          <TabsTrigger value="social">Social</TabsTrigger>
+    87→          <TabsTrigger value="seo">SEO</TabsTrigger>
+    88→          <TabsTrigger value="home">Home</TabsTrigger>
+    89→          <TabsTrigger value="about">About</TabsTrigger>
+    90→          <TabsTrigger value="footer">Footer</TabsTrigger>
+    91→          <TabsTrigger value="pages">Pages</TabsTrigger>
+    92→          <TabsTrigger value="account">Account</TabsTrigger>
+    93→        </TabsList>
+    94→
+    95→        <TabsContent value="brand">
+    96→          <BrandSection value={settings.brand} onSaved={setSettings} />
+    97→        </TabsContent>
+    98→        <TabsContent value="contact">
+    99→          <ContactSection value={settings.contact} onSaved={setSettings} />
+   100→        </TabsContent>
+   101→        <TabsContent value="social">
+   102→          <SocialSection value={settings.social} onSaved={setSettings} />
+   103→        </TabsContent>
+   104→        <TabsContent value="seo">
+   105→          <SeoSection value={settings.seo} onSaved={setSettings} />
+   106→        </TabsContent>
+   107→        <TabsContent value="home">
+   108→          <HomeSection value={settings.home} onSaved={setSettings} />
+   109→        </TabsContent>
+   110→        <TabsContent value="about">
+   111→          <AboutSection value={settings.about} onSaved={setSettings} />
+   112→        </TabsContent>
+   113→        <TabsContent value="footer">
+   114→          <FooterSection value={settings.footer} onSaved={setSettings} />
+   115→        </TabsContent>
+   116→        <TabsContent value="pages">
+   117→          <PagesSection value={settings.pages} onSaved={setSettings} />
+   118→        </TabsContent>
+   119→        <TabsContent value="account">
+   120→          <AccountSection />
+   121→        </TabsContent>
+   122→      </Tabs>
+   123→    </div>
+   124→  );
+   125→}
+   126→
+   127→/* ------------------------------------------------------------------ shared */
+   128→/** Form state that re-seeds whenever the server value identity changes.
+   129→ *  Uses the documented "adjust state during render" pattern (no effect). */
+   130→function useSyncedForm<T>(value: T) {
+   131→  const [form, setForm] = useState<T>(value);
+   132→  const [seed, setSeed] = useState<T>(value);
+   133→  if (seed !== value) {
+   134→    setSeed(value);
+   135→    setForm(value);
+   136→  }
+   137→  return [form, setForm] as const;
+   138→}
+   139→
+   140→function useSectionSaver<K extends keyof Settings>(section: K, onSaved: (s: Settings) => void) {
+   141→  const { onApiError } = useAdmin();
+   142→  const [saving, setSaving] = useState(false);
+   143→
+   144→  async function save(data: Settings[K]) {
+   145→    setSaving(true);
+   146→    try {
+   147→      const res = await api<{ settings: Settings }>("api/settings", {
+   148→        method: "PUT",
+   149→        body: { section, data },
+   150→        admin: true,
+   151→      });
+   152→      onSaved(res.settings);
+   153→      toast.success("Settings saved");
+   154→    } catch (err) {
+   155→      onApiError(err);
+   156→    } finally {
+   157→      setSaving(false);
+   158→    }
+   159→  }
+   160→
+   161→  return { saving, save };
+   162→}
+   163→
+   164→function SecCard({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+   165→  return (
+   166→    <AdminCard>
+   167→      <CardHead title={title} desc={desc} />
+   168→      <div className="space-y-4 p-5">{children}</div>
+   169→    </AdminCard>
+   170→  );
+   171→}
+   172→
+   173→function SaveBar({
+   174→  onSave,
+   175→  saving,
+   176→  dirty,
+   177→}: {
+   178→  onSave: () => void;
+   179→  saving: boolean;
+   180→  dirty: boolean;
+   181→}) {
+   182→  return (
+   183→    <div className="flex items-center justify-end gap-3">
+   184→      {!dirty ? <span className="text-xs text-graphite">No changes yet</span> : <span className="text-xs font-medium text-ink">Unsaved changes</span>}
+   185→      <Button className="h-10 bg-ink text-ivory hover:bg-ink/85" disabled={saving || !dirty} onClick={onSave}>
+   186→        {saving ? <Spin /> : null} Save changes
+   187→      </Button>
+   188→    </div>
+   189→  );
+   190→}
+   191→
+   192→/* ------------------------------------------------------------------- brand */
+   193→function BrandSection({ value, onSaved }: { value: Settings["brand"]; onSaved: (s: Settings) => void }) {
+   194→  const [form, setForm] = useSyncedForm(value);
+   195→  const { saving, save } = useSectionSaver("brand", onSaved);
+   196→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   197→
+   198→  return (
+   199→    <div className="space-y-4">
+   200→      <SecCard title="Brand" desc="Studio name and tagline used across the site.">
+   201→        <Field label="Studio name" htmlFor="brand-name">
+   202→          <Input id="brand-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+   203→        </Field>
+   204→        <Field label="Tagline" htmlFor="brand-tagline" hint="Shown beside the logo and in meta descriptions.">
+   205→          <Input id="brand-tagline" value={form.tagline} onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))} />
+   206→        </Field>
+   207→      </SecCard>
+   208→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   209→    </div>
+   210→  );
+   211→}
+   212→
+   213→/* ----------------------------------------------------------------- contact */
+   214→function ContactSection({ value, onSaved }: { value: Settings["contact"]; onSaved: (s: Settings) => void }) {
+   215→  const [form, setForm] = useSyncedForm(value);
+   216→  const { saving, save } = useSectionSaver("contact", onSaved);
+   217→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   218→
+   219→  return (
+   220→    <div className="space-y-4">
+   221→      <SecCard title="Contact" desc="How clients reach you — used in the nav, footer and contact page.">
+   222→        <Field label="Email" htmlFor="c-email">
+   223→          <Input id="c-email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+   224→        </Field>
+   225→        <div className="grid gap-4 sm:grid-cols-2">
+   226→          <Field label="WhatsApp number" htmlFor="c-wa" hint="Digits only, international format — e.g. 919876543210.">
+   227→            <Input id="c-wa" inputMode="numeric" value={form.whatsapp} onChange={(e) => setForm((f) => ({ ...f, whatsapp: e.target.value.replace(/[^\d]/g, "") }))} />
+   228→          </Field>
+   229→          <Field label="Phone" htmlFor="c-phone">
+   230→            <Input id="c-phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+   231→          </Field>
+   232→        </div>
+   233→        <div className="grid gap-4 sm:grid-cols-2">
+   234→          <Field label="Location" htmlFor="c-location">
+   235→            <Input id="c-location" value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))} />
+   236→          </Field>
+   237→          <Field label="Service area" htmlFor="c-area">
+   238→            <Input id="c-area" value={form.serviceArea} onChange={(e) => setForm((f) => ({ ...f, serviceArea: e.target.value }))} />
+   239→          </Field>
+   240→        </div>
+   241→        <div className="grid gap-4 sm:grid-cols-2">
+   242→          <Field label="Working hours" htmlFor="c-hours">
+   243→            <Input id="c-hours" value={form.hours} onChange={(e) => setForm((f) => ({ ...f, hours: e.target.value }))} />
+   244→          </Field>
+   245→          <Field label="Response time" htmlFor="c-response">
+   246→            <Input id="c-response" value={form.responseTime} onChange={(e) => setForm((f) => ({ ...f, responseTime: e.target.value }))} />
+   247→          </Field>
+   248→        </div>
+   249→      </SecCard>
+   250→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   251→    </div>
+   252→  );
+   253→}
+   254→
+   255→/* ------------------------------------------------------------------ social */
+   256→function SocialSection({ value, onSaved }: { value: Settings["social"]; onSaved: (s: Settings) => void }) {
+   257→  const [form, setForm] = useSyncedForm(value);
+   258→  const { saving, save } = useSectionSaver("social", onSaved);
+   259→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   260→
+   261→  const rows: { key: keyof Settings["social"]; label: string; placeholder: string }[] = [
+   262→    { key: "instagram", label: "Instagram", placeholder: "https://instagram.com/…" },
+   263→    { key: "linkedin", label: "LinkedIn", placeholder: "https://linkedin.com/in/…" },
+   264→    { key: "youtube", label: "YouTube", placeholder: "https://youtube.com/@…" },
+   265→    { key: "x", label: "X (Twitter)", placeholder: "https://x.com/…" },
+   266→    { key: "behance", label: "Behance", placeholder: "https://behance.net/…" },
+   267→  ];
+   268→
+   269→  return (
+   270→    <div className="space-y-4">
+   271→      <SecCard title="Social profiles" desc="Leave empty to hide the icon on the public site.">
+   272→        {rows.map((r) => (
+   273→          <Field key={r.key} label={r.label} htmlFor={`soc-${r.key}`}>
+   274→            <Input
+   275→              id={`soc-${r.key}`}
+   276→              value={form[r.key]}
+   277→              placeholder={r.placeholder}
+   278→              onChange={(e) => setForm((f) => ({ ...f, [r.key]: e.target.value }))}
+   279→            />
+   280→          </Field>
+   281→        ))}
+   282→      </SecCard>
+   283→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   284→    </div>
+   285→  );
+   286→}
+   287→
+   288→/* --------------------------------------------------------------------- seo */
+   289→function SeoSection({ value, onSaved }: { value: Settings["seo"]; onSaved: (s: Settings) => void }) {
+   290→  const [form, setForm] = useSyncedForm(value);
+   291→  const { saving, save } = useSectionSaver("seo", onSaved);
+   292→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   293→
+   294→  return (
+   295→    <div className="space-y-4">
+   296→      <SecCard title="SEO" desc="Meta title, description and keywords for search engines.">
+   297→        <Field label="Meta title" htmlFor="seo-title">
+   298→          <Input id="seo-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+   299→        </Field>
+   300→        <Field label="Meta description" htmlFor="seo-desc" hint="Aim for 150–160 characters.">
+   301→          <CountedTextarea id="seo-desc" value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} max={320} rows={3} />
+   302→        </Field>
+   303→        <Field label="Keywords" htmlFor="seo-kw" hint="Comma-separated search terms.">
+   304→          <Textarea id="seo-kw" rows={2} value={form.keywords} onChange={(e) => setForm((f) => ({ ...f, keywords: e.target.value }))} />
+   305→        </Field>
+   306→        <Field label="Site URL" htmlFor="seo-url" hint="Canonical address once the site is live, e.g. https://nexorastudio.in">
+   307→          <Input id="seo-url" value={form.siteUrl} onChange={(e) => setForm((f) => ({ ...f, siteUrl: e.target.value }))} />
+   308→        </Field>
+   309→      </SecCard>
+   310→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   311→    </div>
+   312→  );
+   313→}
+   314→
+   315→/* -------------------------------------------------------------------- home */
+   316→function HomeSection({ value, onSaved }: { value: Settings["home"]; onSaved: (s: Settings) => void }) {
+   317→  const [form, setForm] = useSyncedForm(value);
+   318→  const { saving, save } = useSectionSaver("home", onSaved);
+   319→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   320→
+   321→  const set = <K extends keyof Settings["home"]>(key: K, v: Settings["home"][K]) => setForm((f) => ({ ...f, [key]: v }));
+   322→
+   323→  return (
+   324→    <div className="space-y-4">
+   325→      <SecCard title="Hero" desc="The first screen visitors see.">
+   326→        <div className="grid gap-4 sm:grid-cols-2">
+   327→          <Field label="Kicker" htmlFor="h-kicker">
+   328→            <Input id="h-kicker" value={form.heroKicker} onChange={(e) => set("heroKicker", e.target.value)} />
+   329→          </Field>
+   330→          <Field label="Meta line" htmlFor="h-meta" hint="Small line under the hero, e.g. services list.">
+   331→            <Input id="h-meta" value={form.heroMeta} onChange={(e) => set("heroMeta", e.target.value)} />
+   332→          </Field>
+   333→        </div>
+   334→        <div className="grid gap-4 sm:grid-cols-2">
+   335→          <Field label="Title — line 1" htmlFor="h-t1">
+   336→            <Input id="h-t1" value={form.heroTitleLine1} onChange={(e) => set("heroTitleLine1", e.target.value)} />
+   337→          </Field>
+   338→          <Field label="Title — line 2" htmlFor="h-t2">
+   339→            <Input id="h-t2" value={form.heroTitleLine2} onChange={(e) => set("heroTitleLine2", e.target.value)} />
+   340→          </Field>
+   341→        </div>
+   342→        <Field label="Title — accent words" htmlFor="h-accent" hint="Highlighted words rendered inside line 2.">
+   343→          <Input id="h-accent" value={form.heroTitleAccent} onChange={(e) => set("heroTitleAccent", e.target.value)} />
+   344→        </Field>
+   345→        <Field label="Subtitle" htmlFor="h-sub">
+   346→          <Textarea id="h-sub" rows={3} value={form.heroSubtitle} onChange={(e) => set("heroSubtitle", e.target.value)} />
+   347→        </Field>
+   348→        <MediaField label="Hero media — main" value={form.heroMediaMain} onChange={(v) => set("heroMediaMain", v)} id="h-media-main" />
+   349→        <MediaField label="Hero media — secondary" value={form.heroMediaSecondary} onChange={(v) => set("heroMediaSecondary", v)} id="h-media-2" />
+   350→        <div className="grid gap-4 sm:grid-cols-2">
+   351→          <Field label="Primary CTA label" htmlFor="h-cta1">
+   352→            <Input id="h-cta1" value={form.ctaPrimary} onChange={(e) => set("ctaPrimary", e.target.value)} />
+   353→          </Field>
+   354→          <Field label="Secondary CTA label" htmlFor="h-cta2">
+   355→            <Input id="h-cta2" value={form.ctaSecondary} onChange={(e) => set("ctaSecondary", e.target.value)} />
+   356→          </Field>
+   357→        </div>
+   358→      </SecCard>
+   359→
+   360→      <SecCard title="Marquee" desc="Scrolling strip of skills/keywords.">
+   361→        <StringListField label="Marquee items" items={form.marquee} onChange={(v) => set("marquee", v)} placeholder="e.g. Web Design" addLabel="Add item" />
+   362→      </SecCard>
+   363→
+   364→      <SecCard title="Intro section">
+   365→        <Field label="Kicker" htmlFor="h-ik">
+   366→          <Input id="h-ik" value={form.introKicker} onChange={(e) => set("introKicker", e.target.value)} />
+   367→        </Field>
+   368→        <Field label="Title" htmlFor="h-it">
+   369→          <Input id="h-it" value={form.introTitle} onChange={(e) => set("introTitle", e.target.value)} />
+   370→        </Field>
+   371→        <Field label="Body" htmlFor="h-ib">
+   372→          <Textarea id="h-ib" rows={4} value={form.introBody} onChange={(e) => set("introBody", e.target.value)} />
+   373→        </Field>
+   374→        <StringListField label="Intro points" items={form.introPoints} onChange={(v) => set("introPoints", v)} placeholder="e.g. Direct collaboration with the maker" addLabel="Add point" />
+   375→      </SecCard>
+   376→
+   377→      <div className="grid gap-4 lg:grid-cols-2">
+   378→        <SecCard title="Web section">
+   379→          <Field label="Kicker" htmlFor="h-wk">
+   380→            <Input id="h-wk" value={form.webKicker} onChange={(e) => set("webKicker", e.target.value)} />
+   381→          </Field>
+   382→          <Field label="Title" htmlFor="h-wt">
+   383→            <Input id="h-wt" value={form.webTitle} onChange={(e) => set("webTitle", e.target.value)} />
+   384→          </Field>
+   385→          <Field label="Body" htmlFor="h-wb">
+   386→            <Textarea id="h-wb" rows={4} value={form.webBody} onChange={(e) => set("webBody", e.target.value)} />
+   387→          </Field>
+   388→        </SecCard>
+   389→        <SecCard title="Video section">
+   390→          <Field label="Kicker" htmlFor="h-vk">
+   391→            <Input id="h-vk" value={form.videoKicker} onChange={(e) => set("videoKicker", e.target.value)} />
+   392→          </Field>
+   393→          <Field label="Title" htmlFor="h-vt">
+   394→            <Input id="h-vt" value={form.videoTitle} onChange={(e) => set("videoTitle", e.target.value)} />
+   395→          </Field>
+   396→          <Field label="Body" htmlFor="h-vb">
+   397→            <Textarea id="h-vb" rows={4} value={form.videoBody} onChange={(e) => set("videoBody", e.target.value)} />
+   398→          </Field>
+   399→        </SecCard>
+   400→      </div>
+   401→
+   402→      <SecCard title="Launch bundle">
+   403→        <div className="grid gap-4 sm:grid-cols-2">
+   404→          <Field label="Kicker" htmlFor="h-pk">
+   405→            <Input id="h-pk" value={form.packageKicker} onChange={(e) => set("packageKicker", e.target.value)} />
+   406→          </Field>
+   407→          <Field label="Price label" htmlFor="h-pp">
+   408→            <Input id="h-pp" value={form.packagePrice} onChange={(e) => set("packagePrice", e.target.value)} placeholder="from ₹19,999" />
+   409→          </Field>
+   410→        </div>
+   411→        <Field label="Title" htmlFor="h-pt">
+   412→          <Input id="h-pt" value={form.packageTitle} onChange={(e) => set("packageTitle", e.target.value)} />
+   413→        </Field>
+   414→        <Field label="Body" htmlFor="h-pb">
+   415→          <Textarea id="h-pb" rows={3} value={form.packageBody} onChange={(e) => set("packageBody", e.target.value)} />
+   416→        </Field>
+   417→        <StringListField label="Bundle features" items={form.packageFeatures} onChange={(v) => set("packageFeatures", v)} placeholder="e.g. Multi-page website" addLabel="Add feature" />
+   418→        <Field label="Bundle CTA label" htmlFor="h-pc">
+   419→          <Input id="h-pc" value={form.packageCta} onChange={(e) => set("packageCta", e.target.value)} />
+   420→        </Field>
+   421→      </SecCard>
+   422→
+   423→      <SecCard title="Process">
+   424→        <div className="grid gap-4 sm:grid-cols-2">
+   425→          <Field label="Kicker" htmlFor="h-prk">
+   426→            <Input id="h-prk" value={form.processKicker} onChange={(e) => set("processKicker", e.target.value)} />
+   427→          </Field>
+   428→          <Field label="Title" htmlFor="h-prt">
+   429→            <Input id="h-prt" value={form.processTitle} onChange={(e) => set("processTitle", e.target.value)} />
+   430→          </Field>
+   431→        </div>
+   432→        <ProcessStepsField items={form.processSteps as ProcessStep[]} onChange={(v) => set("processSteps", v)} />
+   433→      </SecCard>
+   434→
+   435→      <SecCard title="Stats strip">
+   436→        <StatsField items={form.stats as StatRow[]} onChange={(v) => set("stats", v)} />
+   437→      </SecCard>
+   438→
+   439→      <SecCard title="Closing CTA">
+   440→        <Field label="Title" htmlFor="h-ct">
+   441→          <Input id="h-ct" value={form.ctaTitle} onChange={(e) => set("ctaTitle", e.target.value)} />
+   442→        </Field>
+   443→        <Field label="Body" htmlFor="h-cb">
+   444→          <Textarea id="h-cb" rows={3} value={form.ctaBody} onChange={(e) => set("ctaBody", e.target.value)} />
+   445→        </Field>
+   446→        <Field label="Button label" htmlFor="h-cbtn">
+   447→          <Input id="h-cbtn" value={form.ctaButton} onChange={(e) => set("ctaButton", e.target.value)} />
+   448→        </Field>
+   449→      </SecCard>
+   450→
+   451→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   452→    </div>
+   453→  );
+   454→}
+   455→
+   456→/* ------------------------------------------------------------------- about */
+   457→function AboutSection({ value, onSaved }: { value: Settings["about"]; onSaved: (s: Settings) => void }) {
+   458→  const [form, setForm] = useSyncedForm(value);
+   459→  const { saving, save } = useSectionSaver("about", onSaved);
+   460→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   461→
+   462→  const set = <K extends keyof Settings["about"]>(key: K, v: Settings["about"][K]) => setForm((f) => ({ ...f, [key]: v }));
+   463→
+   464→  return (
+   465→    <div className="space-y-4">
+   466→      <SecCard title="Owner" desc="The human behind the studio.">
+   467→        <div className="grid gap-4 sm:grid-cols-2">
+   468→          <Field label="Name" htmlFor="a-name">
+   469→            <Input id="a-name" value={form.ownerName} onChange={(e) => set("ownerName", e.target.value)} />
+   470→          </Field>
+   471→          <Field label="Role" htmlFor="a-role">
+   472→            <Input id="a-role" value={form.role} onChange={(e) => set("role", e.target.value)} />
+   473→          </Field>
+   474→        </div>
+   475→        <MediaField label="Portrait" value={form.portraitUrl} onChange={(v) => set("portraitUrl", v)} hint="Square or 4:5 works best." />
+   476→        <Field label="Bio" htmlFor="a-bio" hint="Blank line = new paragraph on the public page.">
+   477→          <Textarea id="a-bio" rows={9} value={form.bio} onChange={(e) => set("bio", e.target.value)} />
+   478→        </Field>
+   479→      </SecCard>
+   480→
+   481→      <SecCard title="Approach & philosophy">
+   482→        <Field label="Approach" htmlFor="a-approach">
+   483→          <Textarea id="a-approach" rows={4} value={form.approach} onChange={(e) => set("approach", e.target.value)} />
+   484→        </Field>
+   485→        <Field label="Philosophy" htmlFor="a-phil">
+   486→          <Textarea id="a-phil" rows={4} value={form.philosophy} onChange={(e) => set("philosophy", e.target.value)} />
+   487→        </Field>
+   488→      </SecCard>
+   489→
+   490→      <SecCard title="Skills & tools">
+   491→        <StringListField label="Skills" items={form.skills} onChange={(v) => set("skills", v)} placeholder="e.g. React & Next.js" addLabel="Add skill" />
+   492→        <StringListField label="Tools" items={form.tools} onChange={(v) => set("tools", v)} placeholder="e.g. Figma" addLabel="Add tool" />
+   493→      </SecCard>
+   494→
+   495→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   496→    </div>
+   497→  );
+   498→}
+   499→
+   500→/* ------------------------------------------------------------------ footer */
+   501→function FooterSection({ value, onSaved }: { value: Settings["footer"]; onSaved: (s: Settings) => void }) {
+   502→  const [form, setForm] = useSyncedForm(value);
+   503→  const { saving, save } = useSectionSaver("footer", onSaved);
+   504→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   505→
+   506→  return (
+   507→    <div className="space-y-4">
+   508→      <SecCard title="Footer" desc="Text shown in the site footer.">
+   509→        <Field label="Blurb" htmlFor="ft-blurb">
+   510→          <Textarea id="ft-blurb" rows={3} value={form.blurb} onChange={(e) => setForm((f) => ({ ...f, blurb: e.target.value }))} />
+   511→        </Field>
+   512→        <Field label="Copyright line" htmlFor="ft-copy">
+   513→          <Input id="ft-copy" value={form.copyright} onChange={(e) => setForm((f) => ({ ...f, copyright: e.target.value }))} />
+   514→        </Field>
+   515→        <Field label="Small note" htmlFor="ft-note" hint="e.g. disclosure about concept/sample work.">
+   516→          <Input id="ft-note" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
+   517→        </Field>
+   518→      </SecCard>
+   519→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   520→    </div>
+   521→  );
+   522→}
+   523→
+   524→/* ------------------------------------------------------------------- pages */
+   525→function PagesSection({ value, onSaved }: { value: Settings["pages"]; onSaved: (s: Settings) => void }) {
+   526→  const [form, setForm] = useSyncedForm(value);
+   527→  const { saving, save } = useSectionSaver("pages", onSaved);
+   528→  const dirty = JSON.stringify(form) !== JSON.stringify(value);
+   529→
+   530→  return (
+   531→    <div className="space-y-4">
+   532→      <SecCard title="Privacy policy" desc="Full text of the /privacy page.">
+   533→        <Textarea aria-label="Privacy policy text" rows={14} className="min-h-[280px]" value={form.privacy} onChange={(e) => setForm((f) => ({ ...f, privacy: e.target.value }))} />
+   534→      </SecCard>
+   535→      <SecCard title="Terms of service" desc="Full text of the /terms page.">
+   536→        <Textarea aria-label="Terms of service text" rows={14} className="min-h-[280px]" value={form.terms} onChange={(e) => setForm((f) => ({ ...f, terms: e.target.value }))} />
+   537→      </SecCard>
+   538→      <SecCard title="404 message" desc="Shown when a page doesn't exist.">
+   539→        <Input aria-label="404 message" value={form.notFound} onChange={(e) => setForm((f) => ({ ...f, notFound: e.target.value }))} />
+   540→      </SecCard>
+   541→      <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
+   542→    </div>
+   543→  );
+   544→}
+   545→
+   546→/* ----------------------------------------------------------------- account */
+   547→function AccountSection() {
+   548→  const [current, setCurrent] = useState("");
+   549→  const [next, setNext] = useState("");
+   550→  const [confirm, setConfirm] = useState("");
+   551→  const [saving, setSaving] = useState(false);
+   552→  const [error, setError] = useState<string | null>(null);
+   553→
+   554→  async function submit(e: FormEvent) {
+   555→    e.preventDefault();
+   556→    setError(null);
+   557→    if (!current) return setError("Enter your current password.");
+   558→    if (!PASSWORD_RE.test(next))
+   559→      return setError("New password needs at least 8 characters, including a letter and a number.");
+   560→    if (next !== confirm) return setError("New password and confirmation don't match.");
+   561→    setSaving(true);
+   562→    try {
+   563→      await api("api/auth", { body: { action: "password", currentPassword: current, newPassword: next } });
+   564→      toast.success("Password updated");
+   565→      setCurrent("");
+   566→      setNext("");
+   567→      setConfirm("");
+   568→    } catch (err) {
+   569→      setError(err instanceof Error ? err.message : "Could not update password.");
+   570→    } finally {
+   571→      setSaving(false);
+   572→    }
+   573→  }
+   574→
+   575→  return (
+   576→    <div className="max-w-xl space-y-4">
+   577→      <AdminCard>
+   578→        <CardHead title="Change password" desc="Use at least 8 characters with a letter and a number." />
+   579→        <form onSubmit={(e) => void submit(e)} className="space-y-4 p-5" noValidate>
+   580→          <Field label="Current password" htmlFor="acc-current">
+   581→            <Input id="acc-current" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+   582→          </Field>
+   583→          <Field label="New password" htmlFor="acc-next">
+   584→            <Input id="acc-next" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
+   585→          </Field>
+   586→          <Field label="Confirm new password" htmlFor="acc-confirm">
+   587→            <Input id="acc-confirm" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+   588→          </Field>
+   589→          {error ? (
+   590→            <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+   591→              {error}
+   592→            </p>
+   593→          ) : null}
+   594→          <Button type="submit" className="h-10 bg-ink text-ivory hover:bg-ink/85" disabled={saving}>
+   595→            {saving ? <Spin /> : null} Update password
+   596→          </Button>
+   597→        </form>
+   598→      </AdminCard>
+   599→    </div>
+   600→  );
+   601→}
+   602→

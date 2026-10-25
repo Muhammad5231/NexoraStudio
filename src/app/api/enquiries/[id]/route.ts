@@ -52,7 +52,11 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     const enquiry = await db.enquiry.update({ where: { id }, data });
     return ok({ enquiry });
-  } catch {
+  } catch (err) {
+    // a lead deleted in another tab should 404, not look like a server fault
+    if (err instanceof Error && err.message.includes("Record to update not found")) {
+      return fail(404, "Enquiry not found.");
+    }
     return serverError("enquiry-patch");
   }
 }
@@ -65,7 +69,10 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     await db.enquiry.delete({ where: { id } });
     return ok({ success: true });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Record to delete does not exist")) {
+      return fail(404, "Enquiry not found.");
+    }
     return serverError("enquiry-delete");
   }
 }

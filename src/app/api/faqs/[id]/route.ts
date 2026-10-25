@@ -33,7 +33,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     const faq = await db.faq.update({ where: { id }, data });
     return ok({ faq });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Record to update not found")) {
+      return fail(404, "FAQ not found.");
+    }
     return serverError("faq-patch");
   }
 }
@@ -46,7 +49,10 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     await db.faq.delete({ where: { id } });
     return ok({ success: true });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Record to delete does not exist")) {
+      return fail(404, "FAQ not found.");
+    }
     return serverError("faq-delete");
   }
 }

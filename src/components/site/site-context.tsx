@@ -19,9 +19,12 @@ export function useSite(): SiteData {
   return ctx;
 }
 
-/** WhatsApp deep link with optional pre-filled message. */
+/** WhatsApp deep link with optional pre-filled message. Returns "" when no
+ * number is configured so callers can hide the CTA instead of linking to a
+ * broken wa.me page. */
 export function waLink(number: string, message?: string): string {
   const n = number.replace(/[^0-9]/g, "");
+  if (!n) return "";
   const base = `https://wa.me/${n}`;
   return message ? `${base}?text=${encodeURIComponent(message)}` : base;
 }

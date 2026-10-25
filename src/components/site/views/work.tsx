@@ -27,7 +27,8 @@ export default function WorkView() {
   const [filter, setFilter] = useState<string>("All");
 
   const categories = CATEGORY_FILTERS.filter((c) => projects.some((p) => p.category === c));
-  const filters = ["All", ...categories, "Featured"];
+  // "Featured" is only offered when at least one project is featured
+  const filters = ["All", ...categories, ...(projects.some((p) => p.featured) ? ["Featured"] : [])];
 
   const visible = projects.filter((p) => {
     if (filter === "All") return true;

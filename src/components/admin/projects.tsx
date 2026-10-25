@@ -413,7 +413,8 @@ export function ProjectEditor({ id }: { id?: string }) {
       if (isNew) {
         const res = await api<{ project: Project }>("api/projects", { body, admin: true });
         toast.success("Project saved");
-        navigate(`/admin/projects/${res.project.id}`);
+        // replace: Back must never return to the dead /new editor
+        navigate(`/admin/projects/${res.project.id}`, { replace: true });
       } else {
         await api<{ project: Project }>(`api/projects/${id}`, { method: "PATCH", body, admin: true });
         setForm((f) => ({ ...f, published: body.published }));

@@ -123,6 +123,38 @@ export default function ServicesView() {
           </section>
         ))}
 
+      {/* graceful empty state when no services are published */}
+      {services.length === 0 ? (
+        <section className="bg-ivory py-24 text-ink sm:py-32" aria-label="No services published yet">
+          <div className="container-x text-center">
+            <Reveal>
+              <p className="kicker justify-center text-ink/60">
+                <span className="inline-block h-px w-8 bg-ink/40" aria-hidden="true" />
+                Services
+              </p>
+            </Reveal>
+            <Reveal delay={0.08}>
+              <h2 className="display-2 mt-5">The service list is being curated.</h2>
+            </Reveal>
+            <Reveal delay={0.14}>
+              <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-graphite">
+                In the meantime, tell us what you&apos;re trying to build — we&apos;ll shape the right scope
+                together.
+              </p>
+            </Reveal>
+            <Reveal delay={0.2} className="mt-8 flex justify-center">
+              <Link
+                href="/contact"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-ink px-7 py-3 font-display text-sm font-semibold text-ivory transition-colors hover:bg-ink-2"
+              >
+                Start a Project
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Reveal>
+          </div>
+        </section>
+      ) : null}
+
       <CTABanner
         title="Not sure which service fits?"
         body="Send a short brief — we'll recommend the smallest scope that gets you there, with honest advice on timeline and budget."

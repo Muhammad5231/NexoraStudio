@@ -197,7 +197,8 @@ export function DashboardView() {
                 <li key={lead.id}>
                   <button
                     type="button"
-                    onClick={() => navigate("/admin/leads")}
+                    onClick={() => navigate(`/admin/leads/${lead.id}`)}
+                    aria-label={`Open lead: ${lead.name}`}
                     className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left transition-colors hover:bg-ink/[0.03]"
                   >
                     <span className="min-w-0">

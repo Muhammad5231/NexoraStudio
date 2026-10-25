@@ -35,7 +35,9 @@ export function HomeView() {
 
   const webServices = services.filter((s) => s.category === "web").slice(0, 4);
   const videoServices = services.filter((s) => s.category === "video").slice(0, 3);
-  const featured = (projects.length > 0 ? projects : []).slice(0, 4);
+  // featured projects surface first (stable order), then fill with the rest
+  const ordered = [...projects].sort((a, b) => Number(b.featured) - Number(a.featured));
+  const featured = ordered.slice(0, 4);
   const whatsappHref = waLink(
     settings.contact.whatsapp,
     `Hi ${settings.brand.name} — I'd like to discuss a project.`
@@ -308,7 +310,7 @@ function WorkSection({ projects }: { projects: ReturnType<typeof useSite>["proje
           {projects.map((project, i) => (
             <Reveal key={project.id} delay={0.06 * i} className={cn("lg:col-span-6", spans[i % spans.length])}>
               <Link href={`/work/${project.slug}`} className="group block" ariaLabel={`View case study: ${project.title}`}>
-                <MediaFrame src={project.coverImage || "/media/hero-main.jpg"} alt={`${project.title} — ${project.category}`} ratio={ratios[i % ratios.length]} className="rounded-2xl border border-ivory/10">
+                <MediaFrame src={project.coverImage || "/media/hero-main.png"} alt={`${project.title} — ${project.category}`} ratio={ratios[i % ratios.length]} className="rounded-2xl border border-ivory/10">
                   <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" aria-hidden="true" />
                   <span className="absolute right-4 top-4 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-volt opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
                     <ArrowUpRight className="h-5 w-5 text-ink" aria-hidden="true" />
@@ -463,8 +465,12 @@ function VideoSection({ services }: { services: ReturnType<typeof useSite>["serv
 /* --------------------------------------------------- PACKAGE (ivory-2) */
 
 function PackageSection() {
-  const { settings } = useSite();
+  const { settings, services } = useSite();
   const h = settings.home;
+  // CTA follows the live package service (renames/unpublish stay safe)
+  const packageHref = services.some((s) => s.category === "package")
+    ? `/services/${services.find((s) => s.category === "package")!.slug}`
+    : "/services";
 
   return (
     <section className="bg-ivory-2 py-20 text-ink sm:py-28">
@@ -485,7 +491,7 @@ function PackageSection() {
               </Reveal>
               <Reveal delay={0.2} className="mt-8 flex flex-wrap items-center gap-5">
                 <span className="font-display text-3xl font-bold tracking-tight">{h.packagePrice}</span>
-                <VoltButton href="/services/launch-bundle" variant="ink">
+                <VoltButton href={packageHref} variant="ink">
                   {h.packageCta}
                 </VoltButton>
               </Reveal>
@@ -595,7 +601,7 @@ function TestimonialSection({ hasTestimonials }: { hasTestimonials: boolean }) {
           {testimonials.map((t, i) => (
             <Reveal key={t.id} delay={0.06 * i}>
               <figure className="flex h-full flex-col rounded-2xl border border-ivory/10 bg-coal p-7">
-                <div className="flex gap-1" aria-label={`${t.rating} out of 5`}>
+                <div className="flex gap-1" role="img" aria-label={`${t.rating} out of 5`}>
                   {Array.from({ length: t.rating }).map((_, j) => (
                     <span key={j} className="h-1.5 w-6 rounded-full bg-volt" aria-hidden="true" />
                   ))}

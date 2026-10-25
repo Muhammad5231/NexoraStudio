@@ -1,0 +1,699 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useMemo, useState } from "react";
+     4→import { ExternalLink, FolderKanban, Pencil, Plus, Star, Trash2 } from "lucide-react";
+     5→import { navigate } from "@/lib/router";
+     6→import { api } from "@/lib/api-client";
+     7→import { cn } from "@/lib/utils";
+     8→import type { Project, ProjectMedia } from "@/lib/types";
+     9→import { Button } from "@/components/ui/button";
+    10→import { Input } from "@/components/ui/input";
+    11→import { Label } from "@/components/ui/label";
+    12→import { Switch } from "@/components/ui/switch";
+    13→import {
+    14→  Select,
+    15→  SelectContent,
+    16→  SelectItem,
+    17→  SelectTrigger,
+    18→  SelectValue,
+    19→} from "@/components/ui/select";
+    20→import {
+    21→  AlertDialog,
+    22→  AlertDialogAction,
+    23→  AlertDialogCancel,
+    24→  AlertDialogContent,
+    25→  AlertDialogDescription,
+    26→  AlertDialogFooter,
+    27→  AlertDialogHeader,
+    28→  AlertDialogTitle,
+    29→} from "@/components/ui/alert-dialog";
+    30→import {
+    31→  Table,
+    32→  TableBody,
+    33→  TableCell,
+    34→  TableHead,
+    35→  TableHeader,
+    36→  TableRow,
+    37→} from "@/components/ui/table";
+    38→import { toast } from "sonner";
+    39→import { AdminCard, CardHead, Chip, EmptyState, ErrorNote, ListSkeleton, PageHead, PubDot, Spin } from "./admin-ui";
+    40→import { useAdmin } from "./admin-context";
+    41→import { CATEGORY_CLASS, SLUG_RE, slugify } from "./admin-utils";
+    42→import { CountedTextarea, Field, MediaField, MediaGalleryField, StringListField } from "./fields";
+    43→
+    44→// ---------------------------------------------------------------------------
+    45→// Projects — portfolio list + full case-study editor.
+    46→// ---------------------------------------------------------------------------
+    47→
+    48→const CATEGORIES = ["Websites", "Landing Pages", "Video Editing"] as const;
+    49→const PROJECT_TYPES = ["Concept Project", "Client Project"] as const;
+    50→
+    51→type ProjectForm = {
+    52→  title: string;
+    53→  slug: string;
+    54→  client: string;
+    55→  category: string;
+    56→  projectType: string;
+    57→  year: string;
+    58→  description: string;
+    59→  overview: string;
+    60→  problem: string;
+    61→  objectives: string[];
+    62→  designDirection: string;
+    63→  solution: string;
+    64→  features: string[];
+    65→  technologies: string[];
+    66→  coverImage: string;
+    67→  media: ProjectMedia[];
+    68→  liveUrl: string;
+    69→  featured: boolean;
+    70→  published: boolean;
+    71→  order: number;
+    72→};
+    73→
+    74→function emptyForm(): ProjectForm {
+    75→  return {
+    76→    title: "",
+    77→    slug: "",
+    78→    client: "",
+    79→    category: "Websites",
+    80→    projectType: "Concept Project",
+    81→    year: String(new Date().getFullYear()),
+    82→    description: "",
+    83→    overview: "",
+    84→    problem: "",
+    85→    objectives: [],
+    86→    designDirection: "",
+    87→    solution: "",
+    88→    features: [],
+    89→    technologies: [],
+    90→    coverImage: "",
+    91→    media: [],
+    92→    liveUrl: "",
+    93→    featured: false,
+    94→    published: false,
+    95→    order: 99,
+    96→  };
+    97→}
+    98→
+    99→function toForm(p: Project): ProjectForm {
+   100→  return {
+   101→    title: p.title,
+   102→    slug: p.slug,
+   103→    client: p.client ?? "",
+   104→    category: p.category,
+   105→    projectType: p.projectType,
+   106→    year: p.year ?? "",
+   107→    description: p.description ?? "",
+   108→    overview: p.overview ?? "",
+   109→    problem: p.problem ?? "",
+   110→    objectives: p.objectives ?? [],
+   111→    designDirection: p.designDirection ?? "",
+   112→    solution: p.solution ?? "",
+   113→    features: p.features ?? [],
+   114→    technologies: p.technologies ?? [],
+   115→    coverImage: p.coverImage ?? "",
+   116→    media: p.media ?? [],
+   117→    liveUrl: p.liveUrl ?? "",
+   118→    featured: p.featured,
+   119→    published: p.published,
+   120→    order: p.order,
+   121→  };
+   122→}
+   123→
+   124→/* ===================================================================== List */
+   125→export function ProjectList() {
+   126→  const { onApiError } = useAdmin();
+   127→  const [projects, setProjects] = useState<Project[]>([]);
+   128→  const [loading, setLoading] = useState(true);
+   129→  const [error, setError] = useState<string | null>(null);
+   130→  const [toDelete, setToDelete] = useState<Project | null>(null);
+   131→  const [deleting, setDeleting] = useState(false);
+   132→
+   133→  const load = useCallback(async () => {
+   134→    setLoading(true);
+   135→    setError(null);
+   136→    try {
+   137→      const res = await api<{ projects: Project[] }>("api/projects?all=1", { admin: true });
+   138→      setProjects(res.projects);
+   139→    } catch (err) {
+   140→      if (onApiError(err)) return;
+   141→      setError(err instanceof Error ? err.message : "Could not load projects.");
+   142→    } finally {
+   143→      setLoading(false);
+   144→    }
+   145→  }, [onApiError]);
+   146→
+   147→  useEffect(() => {
+   148→    void load();
+   149→  }, [load]);
+   150→
+   151→  async function confirmDelete() {
+   152→    if (!toDelete) return;
+   153→    setDeleting(true);
+   154→    try {
+   155→      await api<{ success: boolean }>(`api/projects/${toDelete.id}`, { method: "DELETE", admin: true });
+   156→      toast.success("Project deleted");
+   157→      setProjects((prev) => prev.filter((p) => p.id !== toDelete.id));
+   158→      setToDelete(null);
+   159→    } catch (err) {
+   160→      onApiError(err);
+   161→    } finally {
+   162→      setDeleting(false);
+   163→    }
+   164→  }
+   165→
+   166→  return (
+   167→    <div>
+   168→      <PageHead title="Projects" desc="Your portfolio — case studies shown on the public work page.">
+   169→        <Button className="h-10 bg-ink text-ivory hover:bg-ink/85" onClick={() => navigate("/admin/projects/new")}>
+   170→          <Plus className="size-4" /> New Project
+   171→        </Button>
+   172→      </PageHead>
+   173→
+   174→      <AdminCard>
+   175→        {loading ? (
+   176→          <div className="p-4">
+   177→            <ListSkeleton rows={4} />
+   178→          </div>
+   179→        ) : error ? (
+   180→          <div className="space-y-4 p-4">
+   181→            <ErrorNote message={error} />
+   182→            <Button variant="outline" onClick={() => void load()}>
+   183→              Try again
+   184→            </Button>
+   185→          </div>
+   186→        ) : projects.length === 0 ? (
+   187→          <EmptyState
+   188→            icon={<FolderKanban className="size-6" aria-hidden="true" />}
+   189→            title="No projects yet"
+   190→            body="Add your first case study — concept samples count too, just label them honestly."
+   191→            action={
+   192→              <Button className="bg-ink text-ivory hover:bg-ink/85" onClick={() => navigate("/admin/projects/new")}>
+   193→                <Plus className="size-4" /> New Project
+   194→              </Button>
+   195→            }
+   196→          />
+   197→        ) : (
+   198→          <>
+   199→            {/* desktop */}
+   200→            <div className="hidden overflow-x-auto lg:block">
+   201→              <Table>
+   202→                <TableHeader>
+   203→                  <TableRow className="hover:bg-transparent">
+   204→                    <TableHead className="pl-5">Project</TableHead>
+   205→                    <TableHead>Category</TableHead>
+   206→                    <TableHead>Type</TableHead>
+   207→                    <TableHead>Status</TableHead>
+   208→                    <TableHead>Order</TableHead>
+   209→                    <TableHead className="pr-5 text-right">Actions</TableHead>
+   210→                  </TableRow>
+   211→                </TableHeader>
+   212→                <TableBody>
+   213→                  {projects.map((p) => (
+   214→                    <TableRow key={p.id}>
+   215→                      <TableCell className="py-3 pl-5">
+   216→                        <div className="flex items-center gap-3">
+   217→                          <div className="size-12 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-ink/[0.03]">
+   218→                            {p.coverImage ? (
+   219→                              <img src={p.coverImage} alt="" className="size-full object-cover" />
+   220→                            ) : null}
+   221→                          </div>
+   222→                          <div className="min-w-0">
+   223→                            <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+   224→                              <span className="truncate">{p.title}</span>
+   225→                              {p.featured ? (
+   226→                                <Star className="size-3.5 shrink-0 fill-volt-2 text-volt-2" aria-label="Featured" />
+   227→                              ) : null}
+   228→                            </span>
+   229→                            <span className="block truncate text-xs text-graphite">
+   230→                              {p.client || p.slug} {p.year ? `· ${p.year}` : ""}
+   231→                            </span>
+   232→                          </div>
+   233→                        </div>
+   234→                      </TableCell>
+   235→                      <TableCell>
+   236→                        <Chip className={cn(CATEGORY_CLASS[p.category] ?? "", "px-2 py-0.5 text-[11px] font-semibold")}>
+   237→                          {p.category}
+   238→                        </Chip>
+   239→                      </TableCell>
+   240→                      <TableCell className="text-xs text-graphite">{p.projectType}</TableCell>
+   241→                      <TableCell>
+   242→                        <PubDot published={p.published} />
+   243→                      </TableCell>
+   244→                      <TableCell className="tabular-nums text-graphite">{p.order}</TableCell>
+   245→                      <TableCell className="pr-5">
+   246→                        <div className="flex items-center justify-end gap-1">
+   247→                          <Button variant="ghost" size="icon" className="size-9 text-graphite" aria-label={`Edit ${p.title}`} onClick={() => navigate(`/admin/projects/${p.id}`)}>
+   248→                            <Pencil className="size-4" />
+   249→                          </Button>
+   250→                          <Button
+   251→                            variant="ghost"
+   252→                            size="icon"
+   253→                            className="size-9 text-graphite"
+   254→                            aria-label={`Preview ${p.title} on the public site`}
+   255→                            onClick={() => window.open(`#/work/${p.slug}`, "_blank")}
+   256→                          >
+   257→                            <ExternalLink className="size-4" />
+   258→                          </Button>
+   259→                          <Button
+   260→                            variant="ghost"
+   261→                            size="icon"
+   262→                            className="size-9 text-graphite hover:bg-destructive/10 hover:text-destructive"
+   263→                            aria-label={`Delete ${p.title}`}
+   264→                            onClick={() => setToDelete(p)}
+   265→                          >
+   266→                            <Trash2 className="size-4" />
+   267→                          </Button>
+   268→                        </div>
+   269→                      </TableCell>
+   270→                    </TableRow>
+   271→                  ))}
+   272→                </TableBody>
+   273→              </Table>
+   274→            </div>
+   275→
+   276→            {/* mobile cards */}
+   277→            <ul className="divide-y divide-ink/5 lg:hidden">
+   278→              {projects.map((p) => (
+   279→                <li key={p.id} className="flex items-center gap-3 p-4">
+   280→                  <div className="size-12 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-ink/[0.03]">
+   281→                    {p.coverImage ? (
+   282→                      <img src={p.coverImage} alt="" className="size-full object-cover" />
+   283→                    ) : null}
+   284→                  </div>
+   285→                  <div className="min-w-0 flex-1">
+   286→                    <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+   287→                      <span className="truncate">{p.title}</span>
+   288→                      {p.featured ? <Star className="size-3.5 shrink-0 fill-volt-2 text-volt-2" aria-label="Featured" /> : null}
+   289→                    </span>
+   290→                    <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+   291→                      <Chip className={cn(CATEGORY_CLASS[p.category] ?? "", "text-[11px] font-semibold")}>{p.category}</Chip>
+   292→                      <PubDot published={p.published} />
+   293→                    </span>
+   294→                  </div>
+   295→                  <div className="flex shrink-0 items-center">
+   296→                    <Button variant="ghost" size="icon" className="size-10 text-graphite" aria-label={`Edit ${p.title}`} onClick={() => navigate(`/admin/projects/${p.id}`)}>
+   297→                      <Pencil className="size-4" />
+   298→                    </Button>
+   299→                    <Button
+   300→                      variant="ghost"
+   301→                      size="icon"
+   302→                      className="size-10 text-graphite hover:bg-destructive/10 hover:text-destructive"
+   303→                      aria-label={`Delete ${p.title}`}
+   304→                      onClick={() => setToDelete(p)}
+   305→                    >
+   306→                      <Trash2 className="size-4" />
+   307→                    </Button>
+   308→                  </div>
+   309→                </li>
+   310→              ))}
+   311→            </ul>
+   312→          </>
+   313→        )}
+   314→      </AdminCard>
+   315→
+   316→      <AlertDialog open={!!toDelete} onOpenChange={(open) => !open && setToDelete(null)}>
+   317→        <AlertDialogContent>
+   318→          <AlertDialogHeader>
+   319→            <AlertDialogTitle>Delete “{toDelete?.title}”?</AlertDialogTitle>
+   320→            <AlertDialogDescription>
+   321→              This removes the project from the site permanently. The public case study URL will stop working.
+   322→            </AlertDialogDescription>
+   323→          </AlertDialogHeader>
+   324→          <AlertDialogFooter>
+   325→            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+   326→            <AlertDialogAction
+   327→              disabled={deleting}
+   328→              className="bg-destructive text-white hover:bg-destructive/90"
+   329→              onClick={(e) => {
+   330→                e.preventDefault();
+   331→                void confirmDelete();
+   332→              }}
+   333→            >
+   334→              {deleting ? <Spin /> : null} Delete
+   335→            </AlertDialogAction>
+   336→          </AlertDialogFooter>
+   337→        </AlertDialogContent>
+   338→      </AlertDialog>
+   339→    </div>
+   340→  );
+   341→}
+   342→
+   343→/* =================================================================== Editor */
+   344→export function ProjectEditor({ id }: { id?: string }) {
+   345→  const { onApiError } = useAdmin();
+   346→  const isNew = !id;
+   347→
+   348→  const [form, setForm] = useState<ProjectForm>(emptyForm);
+   349→  const [slugTouched, setSlugTouched] = useState(false);
+   350→  const [loading, setLoading] = useState(!isNew);
+   351→  const [loadError, setLoadError] = useState<string | null>(null);
+   352→  const [saving, setSaving] = useState(false);
+   353→  const [deleting, setDeleting] = useState(false);
+   354→  const [confirmDelete, setConfirmDelete] = useState(false);
+   355→
+   356→  const set = <K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) =>
+   357→    setForm((f) => ({ ...f, [key]: value }));
+   358→
+   359→  useEffect(() => {
+   360→    if (!id) return;
+   361→    let alive = true;
+   362→    setLoading(true);
+   363→    (async () => {
+   364→      try {
+   365→        const res = await api<{ project: Project }>(`api/projects/${id}`, { admin: true });
+   366→        if (!alive) return;
+   367→        setForm(toForm(res.project));
+   368→        setSlugTouched(true); // keep existing slug as-is
+   369→      } catch (err) {
+   370→        if (onApiError(err)) return;
+   371→        setLoadError(err instanceof Error ? err.message : "Could not load this project.");
+   372→      } finally {
+   373→        if (alive) setLoading(false);
+   374→      }
+   375→    })();
+   376→    return () => {
+   377→      alive = false;
+   378→    };
+   379→  }, [id, onApiError]);
+   380→
+   381→  const slugError = useMemo(() => {
+   382→    if (!form.slug) return "Slug is required — it becomes the public URL.";
+   383→    if (!SLUG_RE.test(form.slug)) return "Use lowercase letters, numbers and dashes only.";
+   384→    return null;
+   385→  }, [form.slug]);
+   386→
+   387→  async function save(opts?: { publish?: boolean }) {
+   388→    if (form.title.trim().length < 2) {
+   389→      toast.error("Give the project a title (at least 2 characters).");
+   390→      return;
+   391→    }
+   392→    if (slugError) {
+   393→      toast.error(slugError);
+   394→      return;
+   395→    }
+   396→    const effective: ProjectForm = { ...form, published: opts?.publish ? true : form.published };
+   397→    const body = {
+   398→      ...effective,
+   399→      title: effective.title.trim(),
+   400→      slug: effective.slug.trim(),
+   401→      client: effective.client.trim(),
+   402→      year: effective.year.trim(),
+   403→      liveUrl: effective.liveUrl.trim(),
+   404→      coverImage: effective.coverImage.trim(),
+   405→      objectives: effective.objectives.map((s) => s.trim()).filter(Boolean),
+   406→      features: effective.features.map((s) => s.trim()).filter(Boolean),
+   407→      technologies: effective.technologies.map((s) => s.trim()).filter(Boolean),
+   408→      media: effective.media.filter((m) => m.url.trim()),
+   409→      order: Number.isFinite(effective.order) ? Math.max(0, Math.round(effective.order)) : 99,
+   410→    };
+   411→    setSaving(true);
+   412→    try {
+   413→      if (isNew) {
+   414→        const res = await api<{ project: Project }>("api/projects", { body, admin: true });
+   415→        toast.success("Project saved");
+   416→        navigate(`/admin/projects/${res.project.id}`);
+   417→      } else {
+   418→        await api<{ project: Project }>(`api/projects/${id}`, { method: "PATCH", body, admin: true });
+   419→        setForm((f) => ({ ...f, published: body.published }));
+   420→        toast.success("Project saved");
+   421→        navigate("/admin/projects");
+   422→      }
+   423→    } catch (err) {
+   424→      onApiError(err);
+   425→    } finally {
+   426→      setSaving(false);
+   427→    }
+   428→  }
+   429→
+   430→  async function remove() {
+   431→    if (!id) return;
+   432→    setDeleting(true);
+   433→    try {
+   434→      await api<{ success: boolean }>(`api/projects/${id}`, { method: "DELETE", admin: true });
+   435→      toast.success("Project deleted");
+   436→      navigate("/admin/projects");
+   437→    } catch (err) {
+   438→      onApiError(err);
+   439→    } finally {
+   440→      setDeleting(false);
+   441→    }
+   442→  }
+   443→
+   444→  if (loading) {
+   445→    return (
+   446→      <div className="mx-auto max-w-3xl space-y-4">
+   447→        <div className="h-8 w-48 animate-pulse rounded bg-ink/10" />
+   448→        <div className="h-64 animate-pulse rounded-xl bg-ink/10" />
+   449→        <div className="h-64 animate-pulse rounded-xl bg-ink/10" />
+   450→      </div>
+   451→    );
+   452→  }
+   453→
+   454→  if (loadError) {
+   455→    return (
+   456→      <div className="mx-auto max-w-3xl space-y-4">
+   457→        <ErrorNote message={loadError} />
+   458→        <Button variant="outline" onClick={() => navigate("/admin/projects")}>
+   459→          Back to projects
+   460→        </Button>
+   461→      </div>
+   462→    );
+   463→  }
+   464→
+   465→  return (
+   466→    <div className="mx-auto max-w-3xl pb-28">
+   467→      <PageHead
+   468→        title={isNew ? "New project" : "Edit project"}
+   469→        desc={isNew ? "Fill in the story — you can save as a draft and publish later." : `/${form.slug}`}
+   470→      >
+   471→        <Button variant="outline" className="h-10" onClick={() => navigate("/admin/projects")}>
+   472→          Back to list
+   473→        </Button>
+   474→      </PageHead>
+   475→
+   476→      <div className="space-y-6">
+   477→        {/* basics */}
+   478→        <AdminCard>
+   479→          <CardHead title="Basics" desc="Title, slug and classification." />
+   480→          <div className="space-y-4 p-5">
+   481→            <Field label="Title" htmlFor="p-title">
+   482→              <Input
+   483→                id="p-title"
+   484→                value={form.title}
+   485→                placeholder="e.g. Brew & Co. Website"
+   486→                onChange={(e) => {
+   487→                  const title = e.target.value;
+   488→                  setForm((f) => ({
+   489→                    ...f,
+   490→                    title,
+   491→                    slug: slugTouched ? f.slug : slugify(title),
+   492→                  }));
+   493→                }}
+   494→              />
+   495→            </Field>
+   496→            <Field
+   497→              label="Slug"
+   498→              htmlFor="p-slug"
+   499→              hint={slugError ?? "Public URL: #/work/<slug> — lowercase letters, numbers, dashes."}
+   500→            >
+   501→              <Input
+   502→                id="p-slug"
+   503→                value={form.slug}
+   504→                className={cn(slugError && "border-destructive")}
+   505→                onChange={(e) => {
+   506→                  setSlugTouched(true);
+   507→                  set("slug", e.target.value);
+   508→                }}
+   509→              />
+   510→            </Field>
+   511→            <div className="grid gap-4 sm:grid-cols-2">
+   512→              <Field label="Client (optional)" htmlFor="p-client">
+   513→                <Input id="p-client" value={form.client} placeholder="e.g. Brew & Co." onChange={(e) => set("client", e.target.value)} />
+   514→              </Field>
+   515→              <Field label="Year" htmlFor="p-year">
+   516→                <Input id="p-year" value={form.year} placeholder="2025" onChange={(e) => set("year", e.target.value)} />
+   517→              </Field>
+   518→              <Field label="Category" htmlFor="p-category">
+   519→                <Select value={form.category} onValueChange={(v) => set("category", v)}>
+   520→                  <SelectTrigger id="p-category" className="h-9">
+   521→                    <SelectValue />
+   522→                  </SelectTrigger>
+   523→                  <SelectContent>
+   524→                    {CATEGORIES.map((c) => (
+   525→                      <SelectItem key={c} value={c}>
+   526→                        {c}
+   527→                      </SelectItem>
+   528→                    ))}
+   529→                  </SelectContent>
+   530→                </Select>
+   531→              </Field>
+   532→              <Field
+   533→                label="Project type"
+   534→                htmlFor="p-type"
+   535→                hint="Label sample work as Concept Project until it's genuine client work."
+   536→              >
+   537→                <Select value={form.projectType} onValueChange={(v) => set("projectType", v)}>
+   538→                  <SelectTrigger id="p-type" className="h-9">
+   539→                    <SelectValue />
+   540→                  </SelectTrigger>
+   541→                  <SelectContent>
+   542→                    {PROJECT_TYPES.map((t) => (
+   543→                      <SelectItem key={t} value={t}>
+   544→                        {t}
+   545→                      </SelectItem>
+   546→                    ))}
+   547→                  </SelectContent>
+   548→                </Select>
+   549→              </Field>
+   550→            </div>
+   551→            <Field label="Live URL (optional)" htmlFor="p-liveurl" hint="Link to the deployed site, if it's public.">
+   552→              <Input id="p-liveurl" value={form.liveUrl} placeholder="https://…" onChange={(e) => set("liveUrl", e.target.value)} />
+   553→            </Field>
+   554→          </div>
+   555→        </AdminCard>
+   556→
+   557→        {/* story */}
+   558→        <AdminCard>
+   559→          <CardHead title="Story" desc="The narrative shown on the public case study." />
+   560→          <div className="space-y-4 p-5">
+   561→            <Field label="Short description" htmlFor="p-desc" hint="One or two lines used in cards and previews.">
+   562→              <CountedTextarea id="p-desc" value={form.description} onChange={(v) => set("description", v)} max={400} rows={3} />
+   563→            </Field>
+   564→            <Field label="Overview" htmlFor="p-overview">
+   565→              <CountedTextarea id="p-overview" value={form.overview} onChange={(v) => set("overview", v)} max={4000} rows={5} />
+   566→            </Field>
+   567→            <Field label="The problem" htmlFor="p-problem">
+   568→              <CountedTextarea id="p-problem" value={form.problem} onChange={(v) => set("problem", v)} max={2000} rows={4} />
+   569→            </Field>
+   570→            <Field label="Design direction" htmlFor="p-direction">
+   571→              <CountedTextarea id="p-direction" value={form.designDirection} onChange={(v) => set("designDirection", v)} max={2000} rows={4} />
+   572→            </Field>
+   573→            <Field label="The solution" htmlFor="p-solution">
+   574→              <CountedTextarea id="p-solution" value={form.solution} onChange={(v) => set("solution", v)} max={2000} rows={4} />
+   575→            </Field>
+   576→          </div>
+   577→        </AdminCard>
+   578→
+   579→        {/* lists */}
+   580→        <AdminCard>
+   581→          <CardHead title="Lists" desc="Bullets shown in the case study layout." />
+   582→          <div className="space-y-5 p-5">
+   583→            <StringListField
+   584→              label="Objectives"
+   585→              items={form.objectives}
+   586→              onChange={(v) => set("objectives", v)}
+   587→              placeholder="e.g. Double enquiries from the site"
+   588→              max={10}
+   589→              addLabel="Add objective"
+   590→            />
+   591→            <StringListField
+   592→              label="Features"
+   593→              items={form.features}
+   594→              onChange={(v) => set("features", v)}
+   595→              placeholder="e.g. Online booking form"
+   596→              max={12}
+   597→              addLabel="Add feature"
+   598→            />
+   599→            <StringListField
+   600→              label="Technologies"
+   601→              items={form.technologies}
+   602→              onChange={(v) => set("technologies", v)}
+   603→              placeholder="e.g. Next.js"
+   604→              max={15}
+   605→              addLabel="Add technology"
+   606→            />
+   607→          </div>
+   608→        </AdminCard>
+   609→
+   610→        {/* media */}
+   611→        <AdminCard>
+   612→          <CardHead title="Media" desc="Cover image and gallery for the case study." />
+   613→          <div className="space-y-5 p-5">
+   614→            <MediaField label="Cover image" value={form.coverImage} onChange={(v) => set("coverImage", v)} hint="Shown on cards and as the case study header." />
+   615→            <MediaGalleryField
+   616→              label="Gallery"
+   617→              items={form.media}
+   618→              onChange={(v) => set("media", v)}
+   619→              hint="Images and videos appear after the story sections."
+   620→            />
+   621→          </div>
+   622→        </AdminCard>
+   623→      </div>
+   624→
+   625→      {/* sticky publishing bar */}
+   626→      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink/10 bg-white/95 backdrop-blur lg:left-60">
+   627→        <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3 sm:px-6">
+   628→          <div className="flex items-center gap-2">
+   629→            <Switch id="p-published" checked={form.published} onCheckedChange={(v) => set("published", v)} />
+   630→            <Label htmlFor="p-published" className="text-[13px] font-medium text-ink">
+   631→              Published — visible on the public site
+   632→            </Label>
+   633→          </div>
+   634→          <div className="flex items-center gap-2">
+   635→            <Switch id="p-featured" checked={form.featured} onCheckedChange={(v) => set("featured", v)} />
+   636→            <Label htmlFor="p-featured" className="text-[13px] font-medium text-ink">
+   637→              Featured — appears first
+   638→            </Label>
+   639→          </div>
+   640→          <div className="flex items-center gap-2">
+   641→            <Label htmlFor="p-order" className="text-[13px] font-medium text-ink">
+   642→              Order
+   643→            </Label>
+   644→            <Input
+   645→              id="p-order"
+   646→              type="number"
+   647→              min={0}
+   648→              max={999}
+   649→              value={form.order}
+   650→              onChange={(e) => set("order", Number(e.target.value))}
+   651→              className="h-9 w-20"
+   652→            />
+   653→          </div>
+   654→          <div className="ml-auto flex items-center gap-2">
+   655→            {!isNew ? (
+   656→              <Button
+   657→                variant="outline"
+   658→                className="h-9 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+   659→                disabled={saving || deleting}
+   660→                onClick={() => setConfirmDelete(true)}
+   661→              >
+   662→                <Trash2 className="size-4" /> Delete
+   663→              </Button>
+   664→            ) : null}
+   665→            <Button variant="outline" className="h-9" disabled={saving} onClick={() => void save()}>
+   666→              {saving ? <Spin /> : null} Save
+   667→            </Button>
+   668→            <Button className="h-9 bg-volt font-semibold text-ink hover:bg-volt-2" disabled={saving} onClick={() => void save({ publish: true })}>
+   669→              Save &amp; publish
+   670→            </Button>
+   671→          </div>
+   672→        </div>
+   673→      </div>
+   674→
+   675→      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+   676→        <AlertDialogContent>
+   677→          <AlertDialogHeader>
+   678→            <AlertDialogTitle>Delete “{form.title}”?</AlertDialogTitle>
+   679→            <AlertDialogDescription>This permanently removes the project and its media references.</AlertDialogDescription>
+   680→          </AlertDialogHeader>
+   681→          <AlertDialogFooter>
+   682→            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+   683→            <AlertDialogAction
+   684→              disabled={deleting}
+   685→              className="bg-destructive text-white hover:bg-destructive/90"
+   686→              onClick={(e) => {
+   687→                e.preventDefault();
+   688→                void remove();
+   689→              }}
+   690→            >
+   691→              {deleting ? <Spin /> : null} Delete
+   692→            </AlertDialogAction>
+   693→          </AlertDialogFooter>
+   694→        </AlertDialogContent>
+   695→      </AlertDialog>
+   696→    </div>
+   697→  );
+   698→}
+   699→

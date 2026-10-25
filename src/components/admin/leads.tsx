@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, ChevronLeft, ChevronRight, Inbox, Mail, MessageCircle, Phone, Search, Trash2, X } from "lucide-react";
 import { navigate } from "@/lib/router";
 import { api } from "@/lib/api-client";
@@ -84,7 +84,7 @@ function LeadSheet({
   onUpdated: (lead: Enquiry) => void;
   onDeleted: (id: string) => void;
 }) {
-  const { onApiError } = useAdmin();
+  const { onApiError, refreshBadge } = useAdmin();
   const [lead, setLead] = useState<Enquiry | null>(null);
   const [notes, setNotes] = useState("");
   const [notesDirty, setNotesDirty] = useState(false);
@@ -92,9 +92,13 @@ function LeadSheet({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // mirrors the sheet's current id so late responses from a previous lead
+  // (status PATCH in flight while the user opens another lead) are dropped
+  const idRef = useRef(id);
 
   useEffect(() => {
     let alive = true;
+    idRef.current = id;
     setLead(null);
     setLoadError(null);
     setNotesDirty(false);
@@ -115,23 +119,34 @@ function LeadSheet({
     };
   }, [id, onApiError]);
 
-  async function patch(body: Record<string, unknown>, optimist?: (l: Enquiry) => Enquiry) {
+  async function patch(
+    body: Record<string, unknown>,
+    opts?: {
+      optimist?: (l: Enquiry) => Enquiry;
+      onDone?: (l: Enquiry) => void;
+    }
+  ) {
     if (!lead) return;
     const prev = lead;
-    if (optimist) {
-      const next = optimist(prev);
+    const leadId = lead.id;
+    if (opts?.optimist) {
+      const next = opts.optimist(prev);
       setLead(next);
       onUpdated(next);
     }
     try {
-      const res = await api<{ enquiry: Enquiry }>(`api/enquiries/${lead.id}`, {
+      const res = await api<{ enquiry: Enquiry }>(`api/enquiries/${leadId}`, {
         method: "PATCH",
         body,
         admin: true,
       });
+      if (idRef.current !== leadId) return; // sheet moved on — don't repopulate
       setLead(res.enquiry);
       onUpdated(res.enquiry);
+      if (body.status !== undefined) refreshBadge();
+      opts?.onDone?.(res.enquiry);
     } catch (err) {
+      if (idRef.current !== leadId) return;
       setLead(prev); // revert optimistic update (detail + list)
       onUpdated(prev);
       onApiError(err);
@@ -165,6 +180,7 @@ function LeadSheet({
     try {
       await api<{ success: boolean }>(`api/enquiries/${lead.id}`, { method: "DELETE", admin: true });
       toast.success("Lead deleted");
+      refreshBadge();
       onDeleted(lead.id);
       onOpenChange(false);
     } catch (err) {
@@ -279,7 +295,7 @@ function LeadSheet({
               <div className="flex flex-wrap items-center gap-2">
                 <Select
                   value={ENQUIRY_STATUSES.includes(lead.status as EnquiryStatus) ? lead.status : undefined}
-                  onValueChange={(v) => void patch({ status: v }, (l) => ({ ...l, status: v }))}
+                  onValueChange={(v) => void patch({ status: v }, { optimist: (l) => ({ ...l, status: v }) })}
                 >
                   <SelectTrigger className="h-10 w-52" aria-label="Change lead status">
                     <SelectValue placeholder="Set status" />
@@ -297,7 +313,7 @@ function LeadSheet({
               {lead.followUpDate ? (
                 <Badge variant="outline" className="gap-1.5 border-ink/20 text-ink">
                   <CalendarClock className="size-3.5" aria-hidden="true" />
-                  Follow-up: {new Date(lead.followUpDate).toLocaleDateString()}
+                  Follow-up: {new Date(`${lead.followUpDate.slice(0, 10)}T00:00:00`).toLocaleDateString()}
                 </Badge>
               ) : null}
             </section>
@@ -316,12 +332,18 @@ function LeadSheet({
                   onChange={(e) => {
                     const raw = e.target.value;
                     if (!raw) {
-                      void patch({ followUpDate: null }, (l) => ({ ...l, followUpDate: null }));
-                      toast.success("Follow-up cleared");
+                      void patch({ followUpDate: null }, {
+                        optimist: (l) => ({ ...l, followUpDate: null }),
+                        onDone: () => toast.success("Follow-up cleared"),
+                      });
                     } else {
-                      const iso = new Date(`${raw}T00:00:00`).toISOString();
-                      void patch({ followUpDate: iso }, (l) => ({ ...l, followUpDate: iso }));
-                      toast.success("Follow-up date saved");
+                      // date-only value stored as UTC midnight so it round-trips
+                      // exactly through slice(0, 10) in any timezone (IST safe)
+                      const iso = new Date(`${raw}T00:00:00Z`).toISOString();
+                      void patch({ followUpDate: iso }, {
+                        optimist: (l) => ({ ...l, followUpDate: iso }),
+                        onDone: () => toast.success("Follow-up date saved"),
+                      });
                     }
                   }}
                 />
@@ -331,8 +353,10 @@ function LeadSheet({
                     size="sm"
                     className="h-9 text-graphite"
                     onClick={() => {
-                      void patch({ followUpDate: null }, (l) => ({ ...l, followUpDate: null }));
-                      toast.success("Follow-up cleared");
+                      void patch({ followUpDate: null }, {
+                        optimist: (l) => ({ ...l, followUpDate: null }),
+                        onDone: () => toast.success("Follow-up cleared"),
+                      });
                     }}
                   >
                     <X className="size-4" /> Clear
@@ -432,6 +456,8 @@ export function LeadsView({ selectedId }: { selectedId?: string }) {
   const [service, setService] = useState("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const debouncedSearch = useDebouncedValue(search, 300);
+  // guards against out-of-order responses overwriting newer results
+  const reqIdRef = useRef(0);
 
   const [services, setServices] = useState<Service[]>([]);
 
@@ -463,21 +489,24 @@ export function LeadsView({ selectedId }: { selectedId?: string }) {
   }, [page, debouncedSearch, status, service, sort]);
 
   const load = useCallback(async () => {
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     setError(null);
     setHint(null);
     try {
       const res = await api<Paginated<Enquiry>>(`api/enquiries?${queryString}`, { admin: true });
+      if (reqId !== reqIdRef.current) return; // a newer query already resolved
       setItems(res.items);
       setTotal(res.total);
     } catch (err) {
+      if (reqId !== reqIdRef.current) return;
       if (onApiError(err)) return;
       const status = err instanceof Error && "status" in err ? Number((err as { status: number }).status) : 0;
       setError(err instanceof Error ? err.message : "Could not load leads.");
       const miss = typeof status === "number" ? missingListApiNote(status) : null;
       if (miss) setHint(miss);
     } finally {
-      setLoading(false);
+      if (reqId === reqIdRef.current) setLoading(false);
     }
   }, [queryString, onApiError]);
 
@@ -491,8 +520,16 @@ export function LeadsView({ selectedId }: { selectedId?: string }) {
 
   function onDeleted(id: string) {
     setItems((prev) => prev.filter((e) => e.id !== id));
-    setTotal((t) => Math.max(0, t - 1));
-    void load();
+    const nextTotal = Math.max(0, total - 1);
+    setTotal(nextTotal);
+    // clamp the page so deleting the last row of the last page can't strand
+    // the user on an empty page beyond maxPage
+    const maxAllowed = Math.max(1, Math.ceil(nextTotal / PAGE_SIZE));
+    if (page > maxAllowed) {
+      setPage(maxAllowed); // triggers a refetch via the query string
+    } else {
+      void load();
+    }
   }
 
   const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -556,6 +593,16 @@ export function LeadsView({ selectedId }: { selectedId?: string }) {
       {hint ? (
         <div className="mb-4">
           <ErrorNote message={hint} />
+        </div>
+      ) : null}
+
+      {/* refresh failed but rows are already on screen — say so, offer retry */}
+      {error && items.length > 0 && !loading ? (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5">
+          <p className="text-xs text-destructive">Couldn&apos;t refresh the list — showing the last loaded results.</p>
+          <Button variant="outline" size="sm" className="h-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => void load()}>
+            Retry
+          </Button>
         </div>
       ) : null}
 

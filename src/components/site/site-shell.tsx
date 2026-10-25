@@ -83,11 +83,12 @@ export function SiteShell({ initial }: { initial: SiteData }) {
     const base = content.settings.brand.name || "Nexora Studio";
     const seg0 = route.segments[0] ?? "";
     if (seg0 === "work" && route.segments[1]) {
-      const p = initial.projects.find((x) => x.slug === route.segments[1]);
-      document.title = p ? `${p.title} · Case Study` : `Work · ${base}`;
+      const p = content.projects.find((x) => x.slug === route.segments[1]);
+      // unknown slug renders the 404 view — title should say so
+      document.title = p ? `${p.title} · Case Study` : `Page not found · ${base}`;
     } else if (seg0 === "services" && route.segments[1]) {
-      const s = initial.services.find((x) => x.slug === route.segments[1]);
-      document.title = s ? `${s.title} · Services` : `Services · ${base}`;
+      const s = content.services.find((x) => x.slug === route.segments[1]);
+      document.title = s ? `${s.title} · Services` : `Page not found · ${base}`;
     } else {
       document.title = TITLES[seg0] ? `${TITLES[seg0]} · ${base}` : `Page not found · ${base}`;
     }
@@ -104,7 +105,7 @@ export function SiteShell({ initial }: { initial: SiteData }) {
   if (isAdmin) {
     return (
       <Suspense fallback={<ViewSkeleton />}>
-        <AdminApp route={route} brandName={initial.settings.brand.name} />
+        <AdminApp route={route} brandName={content.settings.brand.name} />
       </Suspense>
     );
   }

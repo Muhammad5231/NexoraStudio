@@ -1,0 +1,689 @@
+     1→"use client";
+     2→
+     3→import { useState, type FormEvent, type ReactNode } from "react";
+     4→import { motion } from "framer-motion";
+     5→import {
+     6→  Check,
+     7→  Clock,
+     8→  Instagram,
+     9→  Linkedin,
+    10→  Loader2,
+    11→  Mail,
+    12→  MapPin,
+    13→  MessageCircle,
+    14→  Youtube,
+    15→} from "lucide-react";
+    16→import { api } from "@/lib/api-client";
+    17→import { useSite, waLink } from "@/components/site/site-context";
+    18→import { EASE, Magnetic, PageHeader, Reveal, VoltButton } from "@/components/site/primitives";
+    19→import {
+    20→  Select,
+    21→  SelectContent,
+    22→  SelectItem,
+    23→  SelectTrigger,
+    24→  SelectValue,
+    25→} from "@/components/ui/select";
+    26→import { cn } from "@/lib/utils";
+    27→
+    28→// ---------------------------------------------------------------------------
+    29→// CONTACT — the conversion page. Contact rail + 2-step enquiry form with
+    30→// client-side validation, honeypot protection and a server-confirmed success
+    31→// state (POST /api/enquiries — public endpoint, no admin header).
+    32→// ---------------------------------------------------------------------------
+    33→
+    34→const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    35→const CONTACT_METHODS = ["WhatsApp", "Email", "Phone call"] as const;
+    36→const BUDGETS = ["Under ₹10,000", "₹10,000 – ₹25,000", "₹25,000 – ₹50,000", "₹50,000+", "Not sure yet"];
+    37→const TIMELINES = ["ASAP", "2–4 weeks", "1–2 months", "Flexible"];
+    38→
+    39→type FormState = {
+    40→  name: string;
+    41→  business: string;
+    42→  email: string;
+    43→  phone: string;
+    44→  contactMethod: (typeof CONTACT_METHODS)[number];
+    45→  serviceType: string;
+    46→  budget: string;
+    47→  timeline: string;
+    48→  description: string;
+    49→};
+    50→
+    51→type ErrorKey = "name" | "email" | "serviceType" | "description";
+    52→type Errors = Partial<Record<ErrorKey, string>>;
+    53→
+    54→const INITIAL_FORM: FormState = {
+    55→  name: "",
+    56→  business: "",
+    57→  email: "",
+    58→  phone: "",
+    59→  contactMethod: "WhatsApp",
+    60→  serviceType: "",
+    61→  budget: "",
+    62→  timeline: "",
+    63→  description: "",
+    64→};
+    65→
+    66→export default function ContactView() {
+    67→  const { settings, services } = useSite();
+    68→
+    69→  const [step, setStep] = useState<1 | 2>(1);
+    70→  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+    71→  const [errors, setErrors] = useState<Errors>({});
+    72→  const [honeypot, setHoneypot] = useState("");
+    73→  const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
+    74→  const [serverError, setServerError] = useState("");
+    75→
+    76→  const serviceOptions = [...services.map((s) => s.title), "Something else"];
+    77→  const firstName = form.name.trim().split(/\s+/)[0] || "there";
+    78→
+    79→  const socials = [
+    80→    { href: settings.social.instagram, label: "Instagram", Icon: Instagram },
+    81→    { href: settings.social.linkedin, label: "LinkedIn", Icon: Linkedin },
+    82→    { href: settings.social.youtube, label: "YouTube", Icon: Youtube },
+    83→  ].filter((s) => s.href);
+    84→
+    85→  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
+    86→    setForm((f) => ({ ...f, [key]: value }));
+    87→    if (key in errors) setErrors((e) => ({ ...e, [key as ErrorKey]: undefined }));
+    88→  }
+    89→
+    90→  /* --------------------------------------------------------- validation */
+    91→
+    92→  const validatorFor = (key: ErrorKey): string | undefined => {
+    93→    switch (key) {
+    94→      case "name":
+    95→        return form.name.trim().length >= 2
+    96→          ? undefined
+    97→          : "Please enter your name (at least 2 characters).";
+    98→      case "email": {
+    99→        const value = form.email.trim();
+   100→        if (!value) return "Please enter your email.";
+   101→        return EMAIL_RE.test(value) ? undefined : "That email address doesn't look right.";
+   102→      }
+   103→      case "description":
+   104→        return form.description.trim().length >= 20
+   105→          ? undefined
+   106→          : `Tell us a little more — at least 20 characters (you're at ${form.description.trim().length}).`;
+   107→      case "serviceType":
+   108→        return form.serviceType ? undefined : "Please select a service type.";
+   109→    }
+   110→  };
+   111→
+   112→  const touch = (key: ErrorKey) => setErrors((e) => ({ ...e, [key]: validatorFor(key) }));
+   113→
+   114→  const goNext = () => {
+   115→    const next: Errors = { name: validatorFor("name"), email: validatorFor("email") };
+   116→    setErrors(next);
+   117→    if (!next.name && !next.email) setStep(2);
+   118→  };
+   119→
+   120→  const backToStep1 = () => {
+   121→    setErrors({});
+   122→    setStep(1);
+   123→  };
+   124→
+   125→  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+   126→    event.preventDefault();
+   127→    const all: Errors = {
+   128→      name: validatorFor("name"),
+   129→      email: validatorFor("email"),
+   130→      serviceType: validatorFor("serviceType"),
+   131→      description: validatorFor("description"),
+   132→    };
+   133→    if (all.name || all.email) {
+   134→      setStep(1);
+   135→      setErrors(all);
+   136→      return;
+   137→    }
+   138→    if (all.serviceType || all.description) {
+   139→      setErrors(all);
+   140→      return;
+   141→    }
+   142→
+   143→    setStatus("sending");
+   144→    setServerError("");
+   145→    try {
+   146→      await api("/api/enquiries", {
+   147→        method: "POST",
+   148→        body: {
+   149→          name: form.name.trim(),
+   150→          business: form.business.trim(),
+   151→          email: form.email.trim(),
+   152→          phone: form.phone.trim(),
+   153→          serviceType: form.serviceType,
+   154→          description: form.description.trim(),
+   155→          budget: form.budget,
+   156→          timeline: form.timeline,
+   157→          contactMethod: form.contactMethod,
+   158→          website: honeypot, // honeypot — must be empty; bots get silently dropped
+   159→        },
+   160→      });
+   161→      setStatus("success");
+   162→    } catch (error) {
+   163→      setStatus("error");
+   164→      setServerError(error instanceof Error ? error.message : "");
+   165→    }
+   166→  }
+   167→
+   168→  const descriptionLength = form.description.trim().length;
+   169→  const canSubmit =
+   170→    form.name.trim().length >= 2 &&
+   171→    EMAIL_RE.test(form.email.trim()) &&
+   172→    !!form.serviceType &&
+   173→    descriptionLength >= 20;
+   174→
+   175→  const whatsappHref = waLink(
+   176→    settings.contact.whatsapp,
+   177→    `Hi ${settings.brand.name} — I'd like to start a project.`
+   178→  );
+   179→
+   180→  return (
+   181→    <>
+   182→      <PageHeader
+   183→        kicker="Contact"
+   184→        title="Let's build something worth noticing."
+   185→        sub={settings.contact.responseTime}
+   186→        meta={settings.contact.serviceArea}
+   187→      />
+   188→
+   189→      {/* -------------------------------------------------------- main (ivory) */}
+   190→      <section className="bg-ivory py-20 text-ink sm:py-28">
+   191→        <div className="container-x grid gap-12 lg:grid-cols-12 lg:gap-14">
+   192→          {/* ------------------------------------------------- contact rail */}
+   193→          <aside className="lg:col-span-5">
+   194→            <Reveal>
+   195→              <p className="kicker flex items-center gap-2.5 text-ink/60">
+   196→                <span className="inline-block h-px w-8 bg-ink/40" aria-hidden="true" />
+   197→                Direct lines
+   198→              </p>
+   199→            </Reveal>
+   200→
+   201→            <div className="mt-8 space-y-6">
+   202→              {(
+   203→                [
+   204→                  {
+   205→                    Icon: Mail,
+   206→                    label: "Email",
+   207→                    value: settings.contact.email,
+   208→                    href: `mailto:${settings.contact.email}`,
+   209→                    external: false,
+   210→                  },
+   211→                  {
+   212→                    Icon: MessageCircle,
+   213→                    label: "WhatsApp",
+   214→                    value: settings.contact.phone,
+   215→                    href: waLink(settings.contact.whatsapp, `Hi ${settings.brand.name} — I have a question about a project.`),
+   216→                    external: true,
+   217→                  },
+   218→                  {
+   219→                    Icon: MapPin,
+   220→                    label: "Location",
+   221→                    value: settings.contact.location,
+   222→                    href: undefined,
+   223→                    external: false,
+   224→                  },
+   225→                  {
+   226→                    Icon: Clock,
+   227→                    label: "Hours",
+   228→                    value: `${settings.contact.hours} · ${settings.contact.responseTime}`,
+   229→                    href: undefined,
+   230→                    external: false,
+   231→                  },
+   232→                ] as const
+   233→              ).map((row, i) => (
+   234→                <Reveal key={row.label} delay={0.06 * i}>
+   235→                  <div className="flex items-start gap-4">
+   236→                    <span
+   237→                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-volt text-ink"
+   238→                      aria-hidden="true"
+   239→                    >
+   240→                      <row.Icon className="h-5 w-5" />
+   241→                    </span>
+   242→                    <div className="min-w-0 pt-0.5">
+   243→                      <p className="font-display text-[11px] font-semibold uppercase tracking-[0.18em] text-ink/45">
+   244→                        {row.label}
+   245→                      </p>
+   246→                      {row.href ? (
+   247→                        <a
+   248→                          href={row.href}
+   249→                          {...(row.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+   250→                          className="mt-1 block break-words text-[15px] font-medium leading-relaxed text-ink transition-colors hover:text-ink/60"
+   251→                        >
+   252→                          {row.value}
+   253→                        </a>
+   254→                      ) : (
+   255→                        <p className="mt-1 text-[15px] leading-relaxed text-ink">{row.value}</p>
+   256→                      )}
+   257→                    </div>
+   258→                  </div>
+   259→                </Reveal>
+   260→              ))}
+   261→            </div>
+   262→
+   263→            {/* socials — only non-empty */}
+   264→            {socials.length > 0 ? (
+   265→              <Reveal delay={0.2}>
+   266→                <div className="mt-10 flex items-center gap-3 border-t border-ink/10 pt-8">
+   267→                  {socials.map((s) => (
+   268→                    <a
+   269→                      key={s.label}
+   270→                      href={s.href}
+   271→                      target="_blank"
+   272→                      rel="noopener noreferrer"
+   273→                      aria-label={`${s.label} (opens in a new tab)`}
+   274→                      className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/15 text-ink/60 transition-colors duration-300 hover:border-ink hover:text-ink"
+   275→                    >
+   276→                      <s.Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+   277→                    </a>
+   278→                  ))}
+   279→                </div>
+   280→              </Reveal>
+   281→            ) : null}
+   282→
+   283→            <Reveal delay={0.26}>
+   284→              <p className="mt-10 flex items-start gap-3 text-sm leading-relaxed text-graphite">
+   285→                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-volt-2" aria-hidden="true" />
+   286→                Enquiries go straight to the studio inbox — no bots, no call centre.
+   287→              </p>
+   288→            </Reveal>
+   289→          </aside>
+   290→
+   291→          {/* --------------------------------------------------- enquiry card */}
+   292→          <div className="lg:col-span-7">
+   293→            <Reveal delay={0.1}>
+   294→              <div className="rounded-3xl border border-ink/10 bg-white/60 p-6 sm:p-10">
+   295→                {status === "success" ? (
+   296→                  /* -------------------------------------------- success state */
+   297→                  <motion.div
+   298→                    initial={{ opacity: 0, scale: 0.92, y: 14 }}
+   299→                    animate={{ opacity: 1, scale: 1, y: 0 }}
+   300→                    transition={{ duration: 0.55, ease: EASE }}
+   301→                    role="status"
+   302→                    className="flex min-h-[440px] flex-col items-center justify-center text-center"
+   303→                  >
+   304→                    <span className="flex h-20 w-20 items-center justify-center rounded-full bg-volt">
+   305→                      <Check className="h-10 w-10 text-ink" strokeWidth={2.5} aria-hidden="true" />
+   306→                    </span>
+   307→                    <h2 className="display-3 mt-8 text-ink">Enquiry received.</h2>
+   308→                    <p className="mt-4 max-w-md text-base leading-relaxed text-graphite">
+   309→                      Thanks {firstName} — your brief is in. {settings.contact.responseTime}.
+   310→                    </p>
+   311→                    <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+   312→                      <Magnetic>
+   313→                        <VoltButton
+   314→                          external
+   315→                          href={waLink(
+   316→                            settings.contact.whatsapp,
+   317→                            `Hi, I just sent an enquiry through your website — my name is ${form.name.trim()}.`
+   318→                          )}
+   319→                        >
+   320→                          Continue on WhatsApp
+   321→                        </VoltButton>
+   322→                      </Magnetic>
+   323→                      <VoltButton href="/" variant="outline-dark">
+   324→                        Back to home
+   325→                      </VoltButton>
+   326→                    </div>
+   327→                  </motion.div>
+   328→                ) : (
+   329→                  /* -------------------------------------------------- the form */
+   330→                  <form onSubmit={handleSubmit} noValidate>
+   331→                    {/* step indicator */}
+   332→                    <div aria-live="polite">
+   333→                      <p className="font-display text-xs font-semibold uppercase tracking-[0.18em] text-ink/50">
+   334→                        {step === 1 ? "Step 1 of 2 — About you" : "Step 2 of 2 — The project"}
+   335→                      </p>
+   336→                      <div
+   337→                        className="mt-3 h-1 overflow-hidden rounded-full bg-ink/10"
+   338→                        role="progressbar"
+   339→                        aria-valuemin={1}
+   340→                        aria-valuemax={2}
+   341→                        aria-valuenow={step}
+   342→                        aria-label="Enquiry form progress"
+   343→                      >
+   344→                        <div
+   345→                          className="h-full bg-ink transition-all duration-500"
+   346→                          style={{ width: step === 1 ? "50%" : "100%" }}
+   347→                        />
+   348→                      </div>
+   349→                    </div>
+   350→
+   351→                    {/* honeypot — bots fill it, server silently drops. Never visible. */}
+   352→                    <div aria-hidden="true" className="hidden">
+   353→                      <label htmlFor="website">Website</label>
+   354→                      <input
+   355→                        id="website"
+   356→                        name="website"
+   357→                        type="text"
+   358→                        tabIndex={-1}
+   359→                        autoComplete="off"
+   360→                        value={honeypot}
+   361→                        onChange={(e) => setHoneypot(e.target.value)}
+   362→                      />
+   363→                    </div>
+   364→
+   365→                    {step === 1 ? (
+   366→                      <motion.fieldset
+   367→                        key="step-1"
+   368→                        initial={{ opacity: 0, x: 16 }}
+   369→                        animate={{ opacity: 1, x: 0 }}
+   370→                        transition={{ duration: 0.4, ease: EASE }}
+   371→                        className="mt-9 space-y-6"
+   372→                      >
+   373→                        <legend className="sr-only">About you</legend>
+   374→
+   375→                        <div className="grid gap-6 sm:grid-cols-2">
+   376→                          <Field label="Full name" htmlFor="name" required error={errors.name}>
+   377→                            <input
+   378→                              id="name"
+   379→                              name="name"
+   380→                              type="text"
+   381→                              autoComplete="name"
+   382→                              placeholder="Aarav Sharma"
+   383→                              value={form.name}
+   384→                              onChange={(e) => setField("name", e.target.value)}
+   385→                              onBlur={() => touch("name")}
+   386→                              aria-invalid={!!errors.name}
+   387→                              aria-describedby={errors.name ? "err-name" : undefined}
+   388→                              className={fieldClass(!!errors.name)}
+   389→                            />
+   390→                          </Field>
+   391→
+   392→                          <Field label="Business / organization" htmlFor="business" optional>
+   393→                            <input
+   394→                              id="business"
+   395→                              name="business"
+   396→                              type="text"
+   397→                              autoComplete="organization"
+   398→                              placeholder="Aroma House Café"
+   399→                              value={form.business}
+   400→                              onChange={(e) => setField("business", e.target.value)}
+   401→                              className={fieldClass(false)}
+   402→                            />
+   403→                          </Field>
+   404→
+   405→                          <Field label="Email" htmlFor="email" required error={errors.email}>
+   406→                            <input
+   407→                              id="email"
+   408→                              name="email"
+   409→                              type="email"
+   410→                              autoComplete="email"
+   411→                              placeholder="you@business.com"
+   412→                              value={form.email}
+   413→                              onChange={(e) => setField("email", e.target.value)}
+   414→                              onBlur={() => touch("email")}
+   415→                              aria-invalid={!!errors.email}
+   416→                              aria-describedby={errors.email ? "err-email" : undefined}
+   417→                              className={fieldClass(!!errors.email)}
+   418→                            />
+   419→                          </Field>
+   420→
+   421→                          <Field label="WhatsApp / phone" htmlFor="phone" optional>
+   422→                            <input
+   423→                              id="phone"
+   424→                              name="phone"
+   425→                              type="tel"
+   426→                              autoComplete="tel"
+   427→                              placeholder="+91 98765 43210"
+   428→                              value={form.phone}
+   429→                              onChange={(e) => setField("phone", e.target.value)}
+   430→                              className={fieldClass(false)}
+   431→                            />
+   432→                          </Field>
+   433→                        </div>
+   434→
+   435→                        <Field label="Preferred contact" htmlFor="contactMethod-WhatsApp">
+   436→                          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Preferred contact method">
+   437→                            {CONTACT_METHODS.map((method) => {
+   438→                              const active = form.contactMethod === method;
+   439→                              return (
+   440→                                <label
+   441→                                  key={method}
+   442→                                  htmlFor={`contactMethod-${method}`}
+   443→                                  className={cn(
+   444→                                    "relative flex min-h-[44px] cursor-pointer items-center justify-center rounded-full border px-2 text-center font-display text-[13px] font-semibold transition-colors duration-300",
+   445→                                    active
+   446→                                      ? "border-ink bg-volt text-ink"
+   447→                                      : "border-ink/15 text-ink/55 hover:border-ink/40 hover:text-ink"
+   448→                                  )}
+   449→                                >
+   450→                                  <input
+   451→                                    id={`contactMethod-${method}`}
+   452→                                    type="radio"
+   453→                                    name="contactMethod"
+   454→                                    value={method}
+   455→                                    checked={active}
+   456→                                    onChange={() => setField("contactMethod", method)}
+   457→                                    className="sr-only"
+   458→                                  />
+   459→                                  {method}
+   460→                                </label>
+   461→                              );
+   462→                            })}
+   463→                          </div>
+   464→                        </Field>
+   465→
+   466→                        <div className="flex justify-end pt-2">
+   467→                          <button
+   468→                            type="button"
+   469→                            onClick={goNext}
+   470→                            disabled={!form.name.trim() || !form.email.trim()}
+   471→                            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-ink px-8 py-3.5 font-display text-[15px] font-semibold text-ivory transition-colors duration-300 hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-40"
+   472→                          >
+   473→                            Next — the project
+   474→                          </button>
+   475→                        </div>
+   476→                      </motion.fieldset>
+   477→                    ) : (
+   478→                      <motion.fieldset
+   479→                        key="step-2"
+   480→                        initial={{ opacity: 0, x: 16 }}
+   481→                        animate={{ opacity: 1, x: 0 }}
+   482→                        transition={{ duration: 0.4, ease: EASE }}
+   483→                        className="mt-9 space-y-6"
+   484→                        disabled={status === "sending"}
+   485→                      >
+   486→                        <legend className="sr-only">The project</legend>
+   487→
+   488→                        <div className="grid gap-6 sm:grid-cols-2">
+   489→                          <Field label="Service type" htmlFor="serviceType" required error={errors.serviceType}>
+   490→                            <Select
+   491→                              value={form.serviceType}
+   492→                              onValueChange={(value) => setField("serviceType", value)}
+   493→                            >
+   494→                              <SelectTrigger
+   495→                                id="serviceType"
+   496→                                aria-invalid={!!errors.serviceType}
+   497→                                aria-describedby={errors.serviceType ? "err-serviceType" : undefined}
+   498→                                className={cn(
+   499→                                  "h-12 w-full rounded-xl bg-white/70 px-4 text-left text-[15px] data-[placeholder]:text-ink/40",
+   500→                                  errors.serviceType ? "border-red-600/70" : "border-ink/15"
+   501→                                )}
+   502→                              >
+   503→                                <SelectValue placeholder="Select a service" />
+   504→                              </SelectTrigger>
+   505→                              <SelectContent>
+   506→                                {serviceOptions.map((option) => (
+   507→                                  <SelectItem key={option} value={option}>
+   508→                                    {option}
+   509→                                  </SelectItem>
+   510→                                ))}
+   511→                              </SelectContent>
+   512→                            </Select>
+   513→                          </Field>
+   514→
+   515→                          <Field label="Budget" htmlFor="budget" optional>
+   516→                            <Select value={form.budget} onValueChange={(value) => setField("budget", value)}>
+   517→                              <SelectTrigger
+   518→                                id="budget"
+   519→                                className="h-12 w-full rounded-xl border-ink/15 bg-white/70 px-4 text-left text-[15px] data-[placeholder]:text-ink/40"
+   520→                              >
+   521→                                <SelectValue placeholder="Select a range" />
+   522→                              </SelectTrigger>
+   523→                              <SelectContent>
+   524→                                {BUDGETS.map((option) => (
+   525→                                  <SelectItem key={option} value={option}>
+   526→                                    {option}
+   527→                                  </SelectItem>
+   528→                                ))}
+   529→                              </SelectContent>
+   530→                            </Select>
+   531→                          </Field>
+   532→
+   533→                          <Field label="Timeline" htmlFor="timeline" optional>
+   534→                            <Select value={form.timeline} onValueChange={(value) => setField("timeline", value)}>
+   535→                              <SelectTrigger
+   536→                                id="timeline"
+   537→                                className="h-12 w-full rounded-xl border-ink/15 bg-white/70 px-4 text-left text-[15px] data-[placeholder]:text-ink/40"
+   538→                              >
+   539→                                <SelectValue placeholder="When do you need it?" />
+   540→                              </SelectTrigger>
+   541→                              <SelectContent>
+   542→                                {TIMELINES.map((option) => (
+   543→                                  <SelectItem key={option} value={option}>
+   544→                                    {option}
+   545→                                  </SelectItem>
+   546→                                ))}
+   547→                              </SelectContent>
+   548→                            </Select>
+   549→                          </Field>
+   550→                        </div>
+   551→
+   552→                        <Field
+   553→                          label="Project description"
+   554→                          htmlFor="description"
+   555→                          required
+   556→                          error={errors.description}
+   557→                          hint={
+   558→                            <span id="desc-hint" className={cn(descriptionLength >= 20 ? "text-ink/60" : "text-ink/40")}>
+   559→                              {descriptionLength >= 20
+   560→                                ? `${descriptionLength} characters — looks good.`
+   561→                                : `Minimum 20 characters — ${20 - descriptionLength} more to go.`}
+   562→                            </span>
+   563→                          }
+   564→                        >
+   565→                          <textarea
+   566→                            id="description"
+   567→                            name="description"
+   568→                            rows={5}
+   569→                            placeholder="What are you building, who is it for, and what does success look like?"
+   570→                            value={form.description}
+   571→                            onChange={(e) => setField("description", e.target.value)}
+   572→                            onBlur={() => touch("description")}
+   573→                            aria-invalid={!!errors.description}
+   574→                            aria-describedby={errors.description ? "err-description" : "desc-hint"}
+   575→                            className={cn(fieldClass(!!errors.description), "resize-y")}
+   576→                          />
+   577→                        </Field>
+   578→
+   579→                        {status === "error" ? (
+   580→                          <div
+   581→                            role="alert"
+   582→                            className="rounded-xl border border-red-600/30 bg-red-600/5 px-4 py-3.5 text-sm leading-relaxed text-red-600"
+   583→                          >
+   584→                            Something went wrong{serverError ? ` — ${serverError}` : ""} — try again, or reach us
+   585→                            directly on{" "}
+   586→                            <a
+   587→                              href={whatsappHref}
+   588→                              target="_blank"
+   589→                              rel="noopener noreferrer"
+   590→                              className="font-semibold underline underline-offset-2"
+   591→                            >
+   592→                              WhatsApp
+   593→                            </a>
+   594→                            . Your answers are still here.
+   595→                          </div>
+   596→                        ) : null}
+   597→
+   598→                        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+   599→                          <button
+   600→                            type="button"
+   601→                            onClick={backToStep1}
+   602→                            disabled={status === "sending"}
+   603→                            className="inline-flex min-h-[48px] items-center justify-center rounded-full border border-ink/25 px-7 py-3.5 font-display text-[15px] font-semibold text-ink transition-colors duration-300 hover:border-ink/60 disabled:cursor-not-allowed disabled:opacity-40"
+   604→                          >
+   605→                            Back
+   606→                          </button>
+   607→                          <button
+   608→                            type="submit"
+   609→                            disabled={!canSubmit || status === "sending"}
+   610→                            className={cn(
+   611→                              "inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-volt px-8 py-3.5 font-display text-[15px] font-semibold text-ink transition-colors duration-300 hover:bg-volt-2",
+   612→                              (status === "sending" || !canSubmit) && "cursor-not-allowed opacity-40"
+   613→                            )}
+   614→                          >
+   615→                            {status === "sending" ? (
+   616→                              <>
+   617→                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+   618→                                Sending…
+   619→                              </>
+   620→                            ) : (
+   621→                              "Send enquiry"
+   622→                            )}
+   623→                          </button>
+   624→                        </div>
+   625→                      </motion.fieldset>
+   626→                    )}
+   627→                  </form>
+   628→                )}
+   629→              </div>
+   630→            </Reveal>
+   631→          </div>
+   632→        </div>
+   633→      </section>
+   634→    </>
+   635→  );
+   636→}
+   637→
+   638→/* ------------------------------------------------------------------ Field */
+   639→
+   640→function Field({
+   641→  label,
+   642→  htmlFor,
+   643→  required,
+   644→  optional,
+   645→  error,
+   646→  hint,
+   647→  children,
+   648→}: {
+   649→  label: string;
+   650→  htmlFor: string;
+   651→  required?: boolean;
+   652→  optional?: boolean;
+   653→  error?: string;
+   654→  hint?: ReactNode;
+   655→  children: ReactNode;
+   656→}) {
+   657→  const errorId = error ? `err-${htmlFor}` : undefined;
+   658→  return (
+   659→    <div>
+   660→      <label
+   661→        htmlFor={htmlFor}
+   662→        className="mb-2 block font-display text-[11px] font-semibold uppercase tracking-[0.16em] text-ink/55"
+   663→      >
+   664→        {label}
+   665→        {required ? <span className="ml-1 text-ink/40" aria-hidden="true">*</span> : null}
+   666→        {optional ? <span className="ml-1.5 normal-case tracking-normal text-ink/35">(optional)</span> : null}
+   667→      </label>
+   668→      {children}
+   669→      {error ? (
+   670→        <p id={errorId} role="alert" className="mt-2 text-sm text-red-600">
+   671→          {error}
+   672→        </p>
+   673→      ) : null}
+   674→      {hint && !error ? <p className="mt-2 text-sm">{hint}</p> : null}
+   675→    </div>
+   676→  );
+   677→}
+   678→
+   679→/* ------------------------------------------------------------ field style */
+   680→
+   681→function fieldClass(invalid: boolean) {
+   682→  return cn(
+   683→    "w-full rounded-xl border bg-white/70 px-4 py-3 text-[15px] text-ink shadow-none outline-none transition duration-300 placeholder:text-ink/35 focus:ring-4",
+   684→    invalid
+   685→      ? "border-red-600/70 focus:border-red-600 focus:ring-red-600/10"
+   686→      : "border-ink/15 focus:border-ink/50 focus:ring-ink/5"
+   687→  );
+   688→}
+   689→

@@ -65,7 +65,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     const project = await db.project.update({ where: { id }, data });
     return ok({ project: shapeProject(project) });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Record to update not found")) {
+      return fail(404, "Project not found.");
+    }
     return serverError("project-patch");
   }
 }
@@ -78,7 +81,10 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     await db.project.delete({ where: { id } });
     return ok({ success: true });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Record to delete does not exist")) {
+      return fail(404, "Project not found.");
+    }
     return serverError("project-delete");
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ExternalLink,
   FolderKanban,
@@ -110,28 +110,23 @@ function BrandMark({ brandName, onNavigate }: { brandName: string; onNavigate?: 
 }
 
 /* ------------------------------------------------------------------- shell */
-function AdminShell({ route, brandName, user, onLogout }: { route: Route; brandName: string; user: AdminUser; onLogout: () => Promise<void> | void }) {
+function AdminShell({
+  route,
+  brandName,
+  user,
+  newCount,
+  onLogout,
+}: {
+  route: Route;
+  brandName: string;
+  user: AdminUser;
+  newCount: number;
+  onLogout: () => Promise<void> | void;
+}) {
   const sub = useMemo(() => route.segments.slice(1), [route.segments]);
   const activeSeg = sub[0] ?? "";
   const [navOpen, setNavOpen] = useState(false);
-  const [newCount, setNewCount] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  // Badge count — refetch on every route change (cheap; also warms dashboard).
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await api<{ stats: DashboardStats }>("api/stats", { admin: true });
-        if (alive) setNewCount(res.stats.enquiries.newCount);
-      } catch {
-        /* badge is best-effort */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [route.path]);
 
   // unknown sub-route → dashboard
   const known =
@@ -167,10 +162,14 @@ function AdminShell({ route, brandName, user, onLogout }: { route: Route; brandN
   async function logout() {
     setLoggingOut(true);
     try {
-      await api("api/auth", { body: { action: "logout" } });
-      onLogout();
+      await api("api/auth", { body: { action: "logout" }, admin: true });
+    } catch {
+      // network/5xx — the local session is cleared below regardless, so the
+      // user is never left staring at a logged-in UI with a dead session
+      toast.error("Could not reach the server — signed out locally.");
     } finally {
       setLoggingOut(false);
+      onLogout();
     }
   }
 
@@ -256,6 +255,24 @@ function AdminShell({ route, brandName, user, onLogout }: { route: Route; brandN
 export default function AdminApp({ route, brandName }: { route: Route; brandName: string }) {
   const [phase, setPhase] = useState<AuthPhase>("loading");
   const [user, setUser] = useState<AdminUser | null>(null);
+  const [newCount, setNewCount] = useState(0);
+  const phaseRef = useRef<AuthPhase>("loading");
+
+  const applyPhase = useCallback((next: AuthPhase) => {
+    phaseRef.current = next; // synchronous guard — dedups stacked 401 toasts
+    setPhase(next);
+  }, []);
+
+  // Sidebar badge — refetch on every route change (cheap; also warms stats).
+  const refreshBadge = useCallback(() => {
+    api<{ stats: DashboardStats }>("api/stats", { admin: true })
+      .then((res) => setNewCount(res.stats.enquiries.newCount))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refreshBadge();
+  }, [route.path, refreshBadge]);
 
   // Initial session check — applied from the fetch callback (never inline).
   useEffect(() => {
@@ -265,36 +282,39 @@ export default function AdminApp({ route, brandName }: { route: Route; brandName
         if (!alive) return;
         if (status.authenticated && status.user) {
           setUser(status.user);
-          setPhase("authed");
+          applyPhase("authed");
         } else {
           setUser(null);
-          setPhase(status.setupRequired ? "setup" : "login");
+          applyPhase(status.setupRequired ? "setup" : "login");
         }
       },
       () => {
-        if (alive) setPhase("login");
+        if (alive) applyPhase("login");
       },
     );
     return () => {
       alive = false;
     };
-  }, []);
+  }, [applyPhase]);
 
   const authLost = useCallback(() => {
+    // dedup: N concurrent 401s must produce one reset + one toast
+    if (phaseRef.current !== "authed") return;
     setUser(null);
-    setPhase("login");
+    applyPhase("login");
     toast.error("Your session has expired — please sign in again.");
-  }, []);
+  }, [applyPhase]);
 
   function handleAuthed(u: AdminUser) {
     setUser(u);
-    setPhase("authed");
+    applyPhase("authed");
     navigate("/admin");
   }
 
   async function handleLogout() {
     setUser(null);
-    setPhase("login");
+    applyPhase("login");
+    setNewCount(0);
     navigate("/admin");
   }
 
@@ -303,8 +323,8 @@ export default function AdminApp({ route, brandName }: { route: Route; brandName
   if (phase === "login" || !user) return <LoginScreen brandName={brandName} onAuthed={handleAuthed} />;
 
   return (
-    <AdminProvider user={user} authLost={authLost}>
-      <AdminShell route={route} brandName={brandName} user={user} onLogout={handleLogout} />
+    <AdminProvider user={user} authLost={authLost} refreshBadge={refreshBadge}>
+      <AdminShell route={route} brandName={brandName} user={user} newCount={newCount} onLogout={handleLogout} />
     </AdminProvider>
   );
 }

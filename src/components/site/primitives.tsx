@@ -157,7 +157,8 @@ export function VoltButton({ href, onClick, children, variant = "volt", size = "
           "absolute inset-0 -translate-x-[101%] transition-transform duration-500 ease-[cubic-bezier(0.65,0,0.35,1)] group-hover:translate-x-0",
           variant === "volt" && "bg-ink/10",
           variant === "ink" && "bg-volt/15",
-          (variant === "outline-light" || variant === "outline-dark") && "bg-white/5"
+          variant === "outline-light" && "bg-white/5",
+          variant === "outline-dark" && "bg-ink/5"
         )}
       />
     </>
@@ -243,6 +244,14 @@ export function Counter({ value, suffix, className }: { value: string; suffix?: 
   const numeric = parseFloat(value);
   const isNumeric = !isNaN(numeric) && isFinite(numeric);
   const [display, setDisplay] = useState(isNumeric ? "0" : value);
+  const [seed, setSeed] = useState(value);
+
+  // resync when the value prop changes (e.g. content refetch after admin
+  // edits) — "adjust state during render" pattern, no effect needed
+  if (seed !== value) {
+    setSeed(value);
+    setDisplay(isNumeric ? "0" : value);
+  }
 
   useEffect(() => {
     if (!inView || !isNumeric || reduce) return;

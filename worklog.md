@@ -145,3 +145,26 @@ Work Log:
 
 Stage Summary:
 - All phases complete and verified in-browser. Lint + tsc clean. Project ready for handover: owner bootstraps their own admin at #/admin on first use.
+
+---
+Task ID: 4 (refinement pass)
+Agent: orchestrator (main)
+Task: Refine website frontend and backend — find and fix all problems and bugs.
+
+Work Log:
+- Audit: dev.log clean; `bun run lint` + `bunx tsc --noEmit` clean (sandbox examples/skills folders excluded). Two deep-review agents (public site + admin panel) produced 14 public (A1–A14) + 12 admin (B1–B12) findings; all fixed and browser-verified.
+- Backend: GET /api/enquiries search now case-insensitive (SQLite `contains` is case-sensitive — filter applied in JS over status/service-filtered set, pagination after). All [id] PATCH/DELETE routes return 404 (not 500) on stale/missing records (P2025 messages matched).
+- Router (src/lib/router.tsx): rewritten as hydration-safe `useSyncExternalStore` store — deep links (#/work, #/admin) resolve on first client paint (no home-view flash); `safeDecode` stops URIError crashes on malformed hash queries (e.g. "#/?next=%"); `navigate(path, { replace: true })` added.
+- site-shell: document titles + AdminApp brandName now use refreshed `content` (was stale `initial`); unknown detail slugs get "Page not found · brand" title.
+- site-context `waLink("")` returns "" so every WhatsApp CTA hides instead of linking to a broken wa.me page (nav, footer, CTABanner, views).
+- Public views: home cover fallback .jpg→.png; package CTA + footer service links now DB-driven (renames/unpublish never 404); home Work section surfaces featured first; testimonial rating role="img"; work page "Featured" filter only when featured projects exist; case-study "← All work" back link + next-project section only when >1 project; legal pages no longer leak the admin-editing note; services page gained an empty state.
+- nav.tsx: mobile menu now closes on Escape (focus into close button, restore to hamburger on close), closes on any route change (back/forward), menu body scrollable (max-h + overflow-y-auto), WhatsApp link hidden when number empty.
+- contact.tsx: Enter on step 1 advances the step instead of submitting; preferred-contact pills have visible has-[:focus-visible] outline.
+- primitives: Counter resyncs on value change (adjust-during-render pattern, lint-safe); outline-dark hover sweep now visible (bg-ink/5).
+- globals.css: :focus-visible adds ink inner box-shadow ring so the volt outline stays visible on volt-filled controls.
+- Admin: authLost 401 dedup (phaseRef guard — one toast, one reset for N concurrent 401s); badge state lifted to AdminApp + refreshBadge() in context (badge updates after in-place status change/delete); logout catches network errors (always signs out locally, admin:true header); password change sends admin:true; leads follow-up date stored as UTC midnight (`${raw}T00:00:00Z`) — IST off-by-one fixed, badge renders from date-part; leads list fetch has request-id stale-response guard; delete clamps page (no empty-page dead end); toasts fire on PATCH success (onDone) not before; LeadSheet drops late responses from a previous lead (idRef); list refresh failure shows retry chip when rows exist; testimonials/faqs publish toggles revert per-row; Settings tabs use forceMount + controlled value so unsaved edits survive tab switches; create→editor navigation uses replace (Back never returns to /new); dashboard recent-lead rows deep-link to the lead sheet.
+- BROWSER VERIFIED (agent-browser): home + zero console errors; deep-link #/work paints directly with correct title; Featured filter (3), case study (back link + next project); footer DB-driven service links; contact form 2-step golden path → "Enquiry received." only after server persist (lead confirmed in DB); admin login → dashboard real metrics; dashboard recent-lead deep link opens sheet; status change persisted (DB) + sidebar badge 2→1; follow-up date round-trips (input 2026-03-15 ↔ DB 2026-03-15T00:00:00.000Z); lowercase search finds mixed-case lead; settings unsaved edit survives tab switch; logout → login screen; protected API 401 without session; mobile 375px: no horizontal overflow, menu opens, Escape closes.
+- Cleanup: temporary QA admin (qa-refine@nexora-test.local) + QA test enquiry deleted from DB. Owner account (muhammadvahora05@gmail.com) and owner enquiry untouched. Lint + tsc clean after all changes.
+
+Stage Summary:
+- 26 bugs fixed across frontend + backend, all verified in-browser. Project remains zero-credential on first run (owner bootstraps at #/admin). No schema changes; no new dependencies.

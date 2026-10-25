@@ -66,13 +66,13 @@ export function FaqsView() {
 
   async function togglePublished(f: Faq, published: boolean) {
     setToggling(f.id);
-    const prev = items;
     setItems((list) => list.map((x) => (x.id === f.id ? { ...x, published } : x)));
     try {
       await api<{ faq: Faq }>(`api/faqs/${f.id}`, { method: "PATCH", body: { published }, admin: true });
       toast.success(published ? "FAQ published" : "FAQ hidden");
     } catch (err) {
-      setItems(prev);
+      // per-row revert — never roll back unrelated concurrent toggles
+      setItems((list) => list.map((x) => (x.id === f.id ? { ...x, published: f.published } : x)));
       onApiError(err);
     } finally {
       setToggling(null);

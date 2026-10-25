@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Menu, X, Instagram, Linkedin, Youtube, Globe } from "lucide-react";
 import { Link, useRoute } from "@/lib/router";
@@ -38,6 +38,9 @@ export function Nav() {
   const reduce = useReducedMotion();
   const { settings } = useSite();
   const isHome = route.path === "";
+  const burgerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const whatsappHref = waLink(settings.contact.whatsapp);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -51,6 +54,29 @@ export function Nav() {
     document.body.style.overflow = open ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  // any route change (menu link, browser back/forward) closes the menu —
+  // "adjust state during render" pattern, no effect needed
+  const [seenPath, setSeenPath] = useState(route.path);
+  if (seenPath !== route.path) {
+    setSeenPath(route.path);
+    setOpen(false);
+  }
+
+  // dialog semantics: Escape closes, focus moves in on open and back to the
+  // hamburger on close
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    closeRef.current?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      burgerRef.current?.focus();
     };
   }, [open]);
 
@@ -100,6 +126,7 @@ export function Nav() {
           </div>
 
           <button
+            ref={burgerRef}
             type="button"
             onClick={() => setOpen(true)}
             className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ivory/15 text-ivory transition-colors hover:border-ivory/40 md:hidden"
@@ -128,6 +155,7 @@ export function Nav() {
             <div className="container-x relative z-10 flex h-[72px] items-center justify-between">
               <BrandMark />
               <button
+                ref={closeRef}
                 type="button"
                 onClick={() => setOpen(false)}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ivory/15 text-ivory"
@@ -137,7 +165,7 @@ export function Nav() {
               </button>
             </div>
 
-            <div className="container-x relative z-10 mt-10 flex flex-1 flex-col justify-between pb-10">
+            <div className="container-x relative z-10 mt-10 flex max-h-[calc(100vh-72px)] flex-1 flex-col justify-between gap-10 overflow-y-auto pb-10">
               <nav aria-label="Mobile">
                 <ul className="space-y-2">
                   {NAV_LINKS.map((link, i) => (
@@ -187,9 +215,11 @@ export function Nav() {
                   <a href={`mailto:${settings.contact.email}`} className="text-sm text-ivory/70">
                     {settings.contact.email}
                   </a>
-                  <a href={waLink(settings.contact.whatsapp)} target="_blank" rel="noopener noreferrer" className="text-sm text-ivory/70">
-                    WhatsApp
-                  </a>
+                  {whatsappHref ? (
+                    <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="text-sm text-ivory/70">
+                      WhatsApp
+                    </a>
+                  ) : null}
                   {socials.map((s) => (
                     <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer" aria-label={s.label} className="text-ivory/70">
                       <s.Icon className="h-4.5 w-4.5" aria-hidden="true" />

@@ -124,6 +124,12 @@ export default function ContactView() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // Implicit Enter submission on step 1 (no submit button is rendered there)
+    // must advance the step — never send a half-filled enquiry.
+    if (step === 1) {
+      goNext();
+      return;
+    }
     const all: Errors = {
       name: validatorFor("name"),
       email: validatorFor("email"),
@@ -441,7 +447,7 @@ export default function ContactView() {
                                   key={method}
                                   htmlFor={`contactMethod-${method}`}
                                   className={cn(
-                                    "relative flex min-h-[44px] cursor-pointer items-center justify-center rounded-full border px-2 text-center font-display text-[13px] font-semibold transition-colors duration-300",
+                                    "relative flex min-h-[44px] cursor-pointer items-center justify-center rounded-full border px-2 text-center font-display text-[13px] font-semibold transition-colors duration-300 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ink",
                                     active
                                       ? "border-ink bg-volt text-ink"
                                       : "border-ink/15 text-ink/55 hover:border-ink/40 hover:text-ink"

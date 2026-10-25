@@ -29,23 +29,32 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (service) where.serviceType = service;
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } },
-        { business: { contains: search } },
-      ];
-    }
+    // NOTE: free-text search is applied in JS below (SQLite `contains` is
+    // case-sensitive; Prisma has no `mode: "insensitive"` on sqlite).
 
-    const [items, total] = await Promise.all([
+    const [rows, totalRows] = await Promise.all([
       db.enquiry.findMany({
         where,
         orderBy: { createdAt: sort === "oldest" ? "asc" : "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
       }),
       db.enquiry.count({ where }),
     ]);
+
+    // SQLite `contains` is case-sensitive, so free-text search is applied in
+    // JS over the (status/service-filtered) set — a CRM search for "brew"
+    // must find "Brew & Co.". Pagination happens after filtering.
+    const q = search.toLowerCase();
+    const filtered = q
+      ? rows.filter(
+          (e) =>
+            e.name.toLowerCase().includes(q) ||
+            e.email.toLowerCase().includes(q) ||
+            e.business.toLowerCase().includes(q)
+        )
+      : rows;
+
+    const total = search ? filtered.length : totalRows;
+    const items = filtered.slice((page - 1) * pageSize, page * pageSize);
 
     return ok({ items, total, page, pageSize });
   } catch {

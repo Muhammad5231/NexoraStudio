@@ -33,6 +33,8 @@ export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // controlled tab: sections keep their unsaved edits while hidden
+  const [tab, setTab] = useState("brand");
 
   const { onApiError } = useAdmin();
   const loadStable = useCallback(async () => {
@@ -79,7 +81,9 @@ export function SettingsView() {
   return (
     <div>
       <PageHead title="Settings" desc="Everything editable on the public site — saved per section." />
-      <Tabs defaultValue="brand">
+      {/* forceMount keeps every section mounted so switching tabs never
+          throws away unsaved edits in another tab */}
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-5 h-auto w-full flex-wrap justify-start gap-1 bg-ink/5 p-1">
           <TabsTrigger value="brand">Brand</TabsTrigger>
           <TabsTrigger value="contact">Contact</TabsTrigger>
@@ -92,31 +96,31 @@ export function SettingsView() {
           <TabsTrigger value="account">Account</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="brand">
+        <TabsContent value="brand" forceMount className={tab === "brand" ? undefined : "hidden"}>
           <BrandSection value={settings.brand} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="contact">
+        <TabsContent value="contact" forceMount className={tab === "contact" ? undefined : "hidden"}>
           <ContactSection value={settings.contact} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="social">
+        <TabsContent value="social" forceMount className={tab === "social" ? undefined : "hidden"}>
           <SocialSection value={settings.social} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="seo">
+        <TabsContent value="seo" forceMount className={tab === "seo" ? undefined : "hidden"}>
           <SeoSection value={settings.seo} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="home">
+        <TabsContent value="home" forceMount className={tab === "home" ? undefined : "hidden"}>
           <HomeSection value={settings.home} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="about">
+        <TabsContent value="about" forceMount className={tab === "about" ? undefined : "hidden"}>
           <AboutSection value={settings.about} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="footer">
+        <TabsContent value="footer" forceMount className={tab === "footer" ? undefined : "hidden"}>
           <FooterSection value={settings.footer} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="pages">
+        <TabsContent value="pages" forceMount className={tab === "pages" ? undefined : "hidden"}>
           <PagesSection value={settings.pages} onSaved={setSettings} />
         </TabsContent>
-        <TabsContent value="account">
+        <TabsContent value="account" forceMount className={tab === "account" ? undefined : "hidden"}>
           <AccountSection />
         </TabsContent>
       </Tabs>
@@ -560,7 +564,7 @@ function AccountSection() {
     if (next !== confirm) return setError("New password and confirmation don't match.");
     setSaving(true);
     try {
-      await api("api/auth", { body: { action: "password", currentPassword: current, newPassword: next } });
+      await api("api/auth", { body: { action: "password", currentPassword: current, newPassword: next }, admin: true });
       toast.success("Password updated");
       setCurrent("");
       setNext("");

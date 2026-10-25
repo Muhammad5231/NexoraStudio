@@ -36,7 +36,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     const testimonial = await db.testimonial.update({ where: { id }, data });
     return ok({ testimonial });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Record to update not found")) {
+      return fail(404, "Testimonial not found.");
+    }
     return serverError("testimonial-patch");
   }
 }
@@ -49,7 +52,10 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     await db.testimonial.delete({ where: { id } });
     return ok({ success: true });
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Record to delete does not exist")) {
+      return fail(404, "Testimonial not found.");
+    }
     return serverError("testimonial-delete");
   }
 }

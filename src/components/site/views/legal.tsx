@@ -33,12 +33,6 @@ export default function LegalView({ kind }: { kind: "privacy" | "terms" }) {
               </Reveal>
             ))}
           </div>
-
-          <Reveal>
-            <p className="mt-14 max-w-3xl border-t border-ink/10 pt-6 text-sm italic text-graphite">
-              This template is editable in the admin panel — Settings → Pages.
-            </p>
-          </Reveal>
         </div>
       </section>
     </>

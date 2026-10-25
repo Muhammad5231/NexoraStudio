@@ -14,6 +14,8 @@ import type { AdminUser } from "@/lib/types";
 type AdminCtx = {
   user: AdminUser | null;
   authLost: () => void;
+  /** Re-fetch the sidebar "new leads" badge (call after status changes). */
+  refreshBadge: () => void;
   /** Toast + handle any thrown API error. Returns true when it was a 401. */
   onApiError: (err: unknown) => boolean;
 };
@@ -21,16 +23,19 @@ type AdminCtx = {
 const AdminContext = createContext<AdminCtx>({
   user: null,
   authLost: () => undefined,
+  refreshBadge: () => undefined,
   onApiError: () => false,
 });
 
 export function AdminProvider({
   user,
   authLost,
+  refreshBadge,
   children,
 }: {
   user: AdminUser | null;
   authLost: () => void;
+  refreshBadge: () => void;
   children: React.ReactNode;
 }) {
   const onApiError = useCallback(
@@ -45,7 +50,10 @@ export function AdminProvider({
     [authLost],
   );
 
-  const value = useMemo(() => ({ user, authLost, onApiError }), [user, authLost, onApiError]);
+  const value = useMemo(
+    () => ({ user, authLost, refreshBadge, onApiError }),
+    [user, authLost, refreshBadge, onApiError],
+  );
   return <AdminContext.Provider value={value}>{children}</AdminContext.Provider>;
 }
 

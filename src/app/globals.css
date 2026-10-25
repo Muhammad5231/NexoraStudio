@@ -249,8 +249,10 @@
   }
 }
 
-/* thin focus visibility */
+/* focus visibility: volt outline + ink inner ring so the indicator stays
+   visible even on volt-filled controls (nav CTA, active filter pills) */
 :focus-visible {
   outline: 2px solid #c6ff3a;
   outline-offset: 2px;
+  box-shadow: 0 0 0 2px #0b0b0c;
 }

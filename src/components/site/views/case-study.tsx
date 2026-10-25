@@ -30,7 +30,8 @@ export default function CaseStudyView({ slug }: { slug: string }) {
 
   const cover = project.coverImage || "/media/hero-main.png";
   const index = projects.findIndex((p) => p.id === project.id);
-  const next = projects[(index + 1) % projects.length] ?? project;
+  // "Next project" only makes sense with more than one published project
+  const next = projects.length > 1 ? projects[(index + 1) % projects.length] : null;
 
   const gallery: ProjectMedia[] =
     project.media.length > 0
@@ -54,7 +55,16 @@ export default function CaseStudyView({ slug }: { slug: string }) {
 
         <div className="container-x relative z-10">
           <Reveal>
-            <p className="kicker flex items-center gap-2.5 text-volt">
+            <Link
+              href="/work"
+              className="group inline-flex items-center gap-2 text-sm text-ivory/60 transition-colors hover:text-volt"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180 transition-transform duration-300 group-hover:-translate-x-1" aria-hidden="true" />
+              All work
+            </Link>
+          </Reveal>
+          <Reveal>
+            <p className="kicker mt-8 flex items-center gap-2.5 text-volt">
               <span className="inline-block h-px w-8 bg-volt" aria-hidden="true" />
               {project.category} · {project.year || "—"}
             </p>
@@ -265,30 +275,32 @@ export default function CaseStudyView({ slug }: { slug: string }) {
       </section>
 
       {/* -------------------------------------------------------- next project */}
-      <section className="bg-ink py-20 text-ivory sm:py-28" aria-label="Next project">
-        <div className="container-x">
-          <Reveal>
-            <p className="kicker text-volt">Next Project</p>
-          </Reveal>
-          <Reveal delay={0.08}>
-            <Link
-              href={`/work/${next.slug}`}
-              className="group mt-8 flex items-center justify-between gap-6 border-t border-ivory/10 pt-10"
-              ariaLabel={`Next project: ${next.title}`}
-            >
-              <h2 className="display-2 text-ivory transition-colors duration-300 group-hover:text-volt">
-                {next.title}
-              </h2>
-              <span
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-ivory/15 transition-colors duration-300 group-hover:border-volt group-hover:bg-volt sm:h-20 sm:w-20"
-                aria-hidden="true"
+      {next ? (
+        <section className="bg-ink py-20 text-ivory sm:py-28" aria-label="Next project">
+          <div className="container-x">
+            <Reveal>
+              <p className="kicker text-volt">Next Project</p>
+            </Reveal>
+            <Reveal delay={0.08}>
+              <Link
+                href={`/work/${next.slug}`}
+                className="group mt-8 flex items-center justify-between gap-6 border-t border-ivory/10 pt-10"
+                ariaLabel={`Next project: ${next.title}`}
               >
-                <ArrowRight className="h-6 w-6 text-ivory transition-all duration-300 group-hover:translate-x-1 group-hover:text-ink sm:h-8 sm:w-8" />
-              </span>
-            </Link>
-          </Reveal>
-        </div>
-      </section>
+                <h2 className="display-2 text-ivory transition-colors duration-300 group-hover:text-volt">
+                  {next.title}
+                </h2>
+                <span
+                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-ivory/15 transition-colors duration-300 group-hover:border-volt group-hover:bg-volt sm:h-20 sm:w-20"
+                  aria-hidden="true"
+                >
+                  <ArrowRight className="h-6 w-6 text-ivory transition-all duration-300 group-hover:translate-x-1 group-hover:text-ink sm:h-8 sm:w-8" />
+                </span>
+              </Link>
+            </Reveal>
+          </div>
+        </section>
+      ) : null}
 
       <CTABanner
         title="Let's build yours next."

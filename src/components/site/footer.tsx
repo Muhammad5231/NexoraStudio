@@ -16,8 +16,18 @@ const MessageCircleIcon = ({ className }: { className?: string }) => (
 );
 
 export function Footer() {
-  const { settings } = useSite();
+  const { settings, services } = useSite();
   const year = new Date().getFullYear();
+  const whatsappHref = waLink(
+    settings.contact.whatsapp,
+    `Hi ${settings.brand.name} — I'd like to discuss a project.`
+  );
+  // DB-driven service links (max 4) so admin renames/unpublishes never 404;
+  // falls back to the services overview when none are published.
+  const serviceLinks =
+    services.length > 0
+      ? services.slice(0, 4).map((s) => ({ href: `/services/${s.slug}`, label: s.title }))
+      : [{ href: "/services", label: "All services" }];
 
   const socials = [
     { href: settings.social.instagram, label: "Instagram", Icon: Instagram },
@@ -32,21 +42,23 @@ export function Footer() {
           {/* brand */}
           <div className="lg:col-span-5">
             <Reveal>
-              <Link href="/" className="font-display text-3xl font-bold tracking-tight sm:text-4xl" aria-label="Back to top">
+              <Link href="/" className="font-display text-3xl font-bold tracking-tight sm:text-4xl" aria-label={`${settings.brand.name} — home`}>
                 {settings.brand.name.split(" ")[0]}
                 <span className="text-volt">.</span>
               </Link>
               <p className="mt-5 max-w-sm text-sm leading-relaxed text-smoke">{settings.footer.blurb}</p>
               <div className="mt-6 flex items-center gap-3">
-                <a
-                  href={waLink(settings.contact.whatsapp, `Hi ${settings.brand.name} — I'd like to discuss a project.`)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Chat on WhatsApp"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ivory/15 text-ivory/70 transition-colors hover:border-volt hover:text-volt"
-                >
-                  <MessageCircleIcon className="h-[18px] w-[18px]" />
-                </a>
+                {whatsappHref ? (
+                  <a
+                    href={whatsappHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Chat on WhatsApp"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ivory/15 text-ivory/70 transition-colors hover:border-volt hover:text-volt"
+                  >
+                    <MessageCircleIcon className="h-[18px] w-[18px]" />
+                  </a>
+                ) : null}
                 <a
                   href={`mailto:${settings.contact.email}`}
                   aria-label="Send an email"
@@ -96,21 +108,13 @@ export function Footer() {
             <Reveal delay={0.12}>
               <p className="font-display text-xs uppercase tracking-[0.2em] text-ivory/40">Services</p>
               <ul className="mt-5 space-y-3 text-sm">
-                {[
-                  "/services/small-business-websites",
-                  "/services/landing-pages",
-                  "/services/reels-shorts-editing",
-                  "/services/launch-bundle",
-                ].map((href, i) => {
-                  const labels = ["Business Websites", "Landing Pages", "Reels & Shorts", "Launch Bundle"];
-                  return (
-                    <li key={href}>
-                      <Link href={href} className="text-ivory/70 transition-colors hover:text-volt">
-                        {labels[i]}
-                      </Link>
-                    </li>
-                  );
-                })}
+                {serviceLinks.map((l) => (
+                  <li key={l.href}>
+                    <Link href={l.href} className="text-ivory/70 transition-colors hover:text-volt">
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
               </ul>
             </Reveal>
           </div>
