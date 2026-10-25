@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Admin authentication
+// ---------------------------------------------------------------------------
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("ADMIN") // ADMIN | OWNER
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Editable site settings — one row per section, value is JSON
+// ---------------------------------------------------------------------------
+
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Services (web / video / package)
+// ---------------------------------------------------------------------------
+
+model Service {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  title         String
+  category      String   @default("web") // web | video | package
+  summary       String   @default("")
+  description   String   @default("")
+  deliverables  String   @default("[]") // JSON string[]
+  useCases      String   @default("[]") // JSON string[]
+  process       String   @default("[]") // JSON string[]
+  exclusions    String   @default("[]") // JSON string[]
+  faqs          String   @default("[]") // JSON [{ q, a }]
+  startingPrice String   @default("")
+  priceNote     String   @default("")
+  published     Boolean  @default(true)
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio projects
+// ---------------------------------------------------------------------------
+
+model Project {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  title           String
+  client          String   @default("")
+  category        String   @default("Websites") // Websites | Landing Pages | Video Editing
+  projectType     String   @default("Concept Project") // Concept Project | Client Project
+  year            String   @default("")
+  description     String   @default("") // short card copy
+  overview        String   @default("") // long case-study intro
+  problem         String   @default("")
+  objectives      String   @default("[]") // JSON string[]
+  designDirection String   @default("")
+  solution        String   @default("")
+  features        String   @default("[]") // JSON string[]
+  technologies    String   @default("[]") // JSON string[]
+  coverImage      String   @default("")
+  media           String   @default("[]") // JSON [{ url, type: image|video, caption? }]
+  liveUrl         String   @default("")
+  featured        Boolean  @default(false)
+  published       Boolean  @default(false)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([published, order])
+}
+
+// ---------------------------------------------------------------------------
+// Testimonials — kept unpublished until the owner adds genuine ones
+// ---------------------------------------------------------------------------
+
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  role      String   @default("")
+  company   String   @default("")
+  quote     String
+  rating    Int      @default(5)
+  published Boolean  @default(false)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+
+model Faq {
+  id        String   @id @default(cuid())
+  question  String
+  answer    String
+  published Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Project enquiries / leads (CRM)
+// ---------------------------------------------------------------------------
+
+model Enquiry {
+  id            String    @id @default(cuid())
+  name          String
+  business      String    @default("")
+  email         String
+  phone         String    @default("")
+  serviceType   String    @default("")
+  description   String
+  budget        String    @default("")
+  timeline      String    @default("")
+  contactMethod String    @default("WhatsApp")
+  status        String    @default("NEW") // NEW | CONTACTED | QUALIFIED | PROPOSAL_SENT | WON | LOST
+  notes         String    @default("") // internal, never public
+  followUpDate  DateTime?
+  source        String    @default("Website")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
