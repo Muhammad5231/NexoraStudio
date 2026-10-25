@@ -132,6 +132,7 @@ export type Project = {
   liveUrl: string;
   featured: boolean;
   published: boolean;
+  showInWork: boolean; // false = hidden from the public Work grid (video-only work lives in the Gallery)
   order: number;
 };
 
@@ -199,12 +200,37 @@ export type Enquiry = {
   updatedAt: string;
 };
 
+export type GalleryType = "video" | "photo";
+
+export type GalleryItem = {
+  id: string;
+  type: GalleryType;
+  title: string;
+  description: string;
+  caption: string;
+  category: string;
+  mediaPath: string; // storage reference served from /uploads/gallery/…
+  posterPath: string; // video poster
+  thumbPath: string; // generated photo thumbnail
+  altText: string;
+  width: number;
+  height: number;
+  durationSeconds: number;
+  clientName: string;
+  featured: boolean;
+  published: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SiteData = {
   settings: Settings;
   projects: Project[];
   services: Service[];
   faqs: Faq[];
   testimonials: Testimonial[];
+  gallery: GalleryItem[]; // published only
 };
 
 export type AdminUser = {

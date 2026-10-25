@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     for (const f of strFields) {
       if (d[f] !== undefined) data[f] = d[f];
     }
-    const boolFields = ["featured", "published"] as const;
+    const boolFields = ["featured", "published", "showInWork"] as const;
     for (const f of boolFields) {
       if (d[f] !== undefined) data[f] = d[f];
     }

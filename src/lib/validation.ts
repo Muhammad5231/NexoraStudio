@@ -70,6 +70,7 @@ export const projectSchema = z.object({
   title: z.string().trim().min(2).max(120),
   client: z.string().trim().max(120).optional().or(z.literal("")),
   category: z.enum(["Websites", "Landing Pages", "Video Editing"]),
+  showInWork: z.boolean().optional(), // false = hidden from the public Work grid (video-only work lives in the Gallery)
   projectType: z.enum(["Concept Project", "Client Project"]),
   year: z.string().trim().max(10).optional().or(z.literal("")),
   description: z.string().trim().max(400).optional().or(z.literal("")),
@@ -133,4 +134,34 @@ export const faqSchema = z.object({
 export const settingsSectionSchema = z.object({
   section: z.enum(["brand", "contact", "social", "seo", "home", "about", "footer", "pages"]),
   data: z.record(z.string(), z.unknown()),
+});
+
+// ---------------------------------------------------------------------------
+// Gallery media. mediaPath/posterPath/thumbPath must be server-issued storage
+// references produced by /api/admin/gallery/upload — they are re-validated on
+// the server against the gallery storage root before anything is persisted.
+// ---------------------------------------------------------------------------
+
+export const galleryItemSchema = z.object({
+  type: z.enum(["video", "photo"]),
+  title: z.string().trim().min(2, "Enter a title (min 2 characters)").max(120),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  caption: z.string().trim().max(300).optional().or(z.literal("")),
+  category: z.string().trim().max(60).optional().or(z.literal("")),
+  mediaPath: z.string().trim().min(1, "Upload the media file first").max(400),
+  posterPath: z.string().trim().max(400).optional().or(z.literal("")),
+  thumbPath: z.string().trim().max(400).optional().or(z.literal("")),
+  altText: z.string().trim().max(300).optional().or(z.literal("")),
+  width: z.number().int().min(0).max(20000).optional(),
+  height: z.number().int().min(0).max(20000).optional(),
+  durationSeconds: z.number().int().min(0).max(36000).optional(),
+  clientName: z.string().trim().max(120).optional().or(z.literal("")),
+  featured: z.boolean().optional(),
+  published: z.boolean().optional(),
+  displayOrder: z.number().int().min(0).max(999).optional(),
+});
+
+export const galleryReorderSchema = z.object({
+  type: z.enum(["video", "photo"]),
+  ids: z.array(z.string().min(1).max(64)).min(1).max(50),
 });

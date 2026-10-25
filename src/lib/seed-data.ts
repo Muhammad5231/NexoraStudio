@@ -449,6 +449,7 @@ export const SEED_PROJECTS = [
     title: "Kavya Studio — Reels System",
     client: "",
     category: "Video Editing",
+    showInWork: false, // video-only work: showcased in the Gallery, not the Work grid
     projectType: "Concept Project",
     year: "2025",
     description:
@@ -487,6 +488,7 @@ export const SEED_PROJECTS = [
     title: "Urban Nest — Launch Promo",
     client: "",
     category: "Video Editing",
+    showInWork: false, // video-only work: showcased in the Gallery, not the Work grid
     projectType: "Concept Project",
     year: "2025",
     description:

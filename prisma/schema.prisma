@@ -65,6 +65,7 @@ model Project {
   title           String
   client          String   @default("")
   category        String   @default("Websites") // Websites | Landing Pages | Video Editing
+  showInWork      Boolean  @default(true) // false hides from public Work grid (e.g. video-only work shown in Gallery instead); case study stays reachable
   projectType     String   @default("Concept Project") // Concept Project | Client Project
   year            String   @default("")
   description     String   @default("") // short card copy
@@ -114,6 +115,36 @@ model Faq {
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Gallery — curated video & photo media, managed in Admin → Gallery.
+// Files live on disk (public/uploads/gallery/…); rows hold metadata + the
+// storage reference. Drafts are never exposed through public queries.
+// ---------------------------------------------------------------------------
+
+model GalleryMedia {
+  id              String   @id @default(cuid())
+  type            String // "video" | "photo"
+  title           String
+  description     String   @default("")
+  caption         String   @default("") // photo caption
+  category        String   @default("")
+  mediaPath       String // storage reference, e.g. /uploads/gallery/videos/<uuid>.mp4
+  posterPath      String   @default("") // video poster image
+  thumbPath       String   @default("") // generated thumbnail (photos)
+  altText         String   @default("") // photo alt text
+  width           Int      @default(0)
+  height          Int      @default(0)
+  durationSeconds Int      @default(0) // videos only
+  clientName      String   @default("") // optional attribution
+  featured        Boolean  @default(false)
+  published       Boolean  @default(false)
+  displayOrder    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([type, published, displayOrder])
 }
 
 // ---------------------------------------------------------------------------

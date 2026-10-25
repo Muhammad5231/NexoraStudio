@@ -68,6 +68,7 @@ type ProjectForm = {
   liveUrl: string;
   featured: boolean;
   published: boolean;
+  showInWork: boolean;
   order: number;
 };
 
@@ -92,6 +93,7 @@ function emptyForm(): ProjectForm {
     liveUrl: "",
     featured: false,
     published: false,
+    showInWork: true,
     order: 99,
   };
 }
@@ -117,6 +119,7 @@ function toForm(p: Project): ProjectForm {
     liveUrl: p.liveUrl ?? "",
     featured: p.featured,
     published: p.published,
+    showInWork: p.showInWork,
     order: p.order,
   };
 }
@@ -636,6 +639,12 @@ export function ProjectEditor({ id }: { id?: string }) {
             <Switch id="p-featured" checked={form.featured} onCheckedChange={(v) => set("featured", v)} />
             <Label htmlFor="p-featured" className="text-[13px] font-medium text-ink">
               Featured — appears first
+            </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch id="p-showinwork" checked={form.showInWork} onCheckedChange={(v) => set("showInWork", v)} />
+            <Label htmlFor="p-showinwork" className="text-[13px] font-medium text-ink">
+              Show in Work grid — off for video-only work
             </Label>
           </div>
           <div className="flex items-center gap-2">

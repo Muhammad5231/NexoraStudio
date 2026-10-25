@@ -5,6 +5,7 @@ import {
   ExternalLink,
   FolderKanban,
   HelpCircle,
+  Images,
   Inbox,
   Layers,
   LayoutDashboard,
@@ -25,6 +26,7 @@ import { AuthLoading, LoginScreen, SetupScreen } from "./auth-screens";
 import { DashboardView } from "./dashboard";
 import { LeadsView } from "./leads";
 import { ProjectEditor, ProjectList } from "./projects";
+import { GalleryAdminView } from "./gallery";
 import { ServiceEditor, ServiceList } from "./services";
 import { TestimonialsView } from "./testimonials";
 import { FaqsView } from "./faqs";
@@ -41,6 +43,7 @@ const NAV = [
   { seg: "", label: "Dashboard", icon: LayoutDashboard },
   { seg: "leads", label: "Leads", icon: Inbox, badge: true },
   { seg: "projects", label: "Projects", icon: FolderKanban },
+  { seg: "gallery", label: "Gallery", icon: Images },
   { seg: "services", label: "Services", icon: Layers },
   { seg: "testimonials", label: "Testimonials", icon: Quote },
   { seg: "faqs", label: "FAQs", icon: HelpCircle },
@@ -133,6 +136,7 @@ function AdminShell({
     sub.length === 0 ||
     (sub[0] === "leads" && sub.length <= 2) ||
     (sub[0] === "projects" && sub.length <= 2) ||
+    (sub[0] === "gallery" && sub.length === 1) ||
     (sub[0] === "services" && sub.length <= 2) ||
     (sub[0] === "testimonials" && sub.length === 1) ||
     (sub[0] === "faqs" && sub.length === 1) ||
@@ -149,6 +153,8 @@ function AdminShell({
     view = <LeadsView selectedId={sub[1]} />;
   } else if (sub[0] === "projects") {
     view = sub[1] === "new" ? <ProjectEditor /> : sub[1] ? <ProjectEditor id={sub[1]} /> : <ProjectList />;
+  } else if (sub[0] === "gallery") {
+    view = <GalleryAdminView />;
   } else if (sub[0] === "services") {
     view = sub[1] === "new" ? <ServiceEditor /> : sub[1] ? <ServiceEditor id={sub[1]} /> : <ServiceList />;
   } else if (sub[0] === "testimonials") {

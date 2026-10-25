@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
     const projects = await db.project.findMany({
       where: {
-        ...(includeDrafts ? {} : { published: true }),
+        ...(includeDrafts ? {} : { published: true, showInWork: true }),
         ...(category ? { category } : {}),
       },
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
         liveUrl: d.liveUrl ?? "",
         featured: d.featured ?? false,
         published: d.published ?? false,
+        showInWork: d.showInWork ?? true,
         order: d.order ?? 99,
       },
     });

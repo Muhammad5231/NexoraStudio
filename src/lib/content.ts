@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { ensureSeeded } from "@/lib/seed";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
+import { getPublicGallery } from "@/lib/gallery";
 import type {
   Faq,
   Project,
@@ -97,6 +98,7 @@ export function shapeProject(row: {
   liveUrl: string;
   featured: boolean;
   published: boolean;
+  showInWork: boolean;
   order: number;
 }): Project {
   return {
@@ -111,10 +113,12 @@ export function shapeProject(row: {
 export async function getPublicContent(): Promise<SiteData> {
   await ensureSeeded();
 
-  const [settings, projects, services, faqs, testimonials] = await Promise.all([
+  const [settings, projects, services, faqs, testimonials, gallery] = await Promise.all([
     getSettings(),
+    // public Work grid shows website-related projects only; video-only work
+    // lives in the Gallery (showInWork stays reversible from the admin)
     db.project.findMany({
-      where: { published: true },
+      where: { published: true, showInWork: true },
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
     }),
     db.service.findMany({
@@ -129,6 +133,7 @@ export async function getPublicContent(): Promise<SiteData> {
       where: { published: true },
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
     }),
+    getPublicGallery(),
   ]);
 
   return {
@@ -152,6 +157,7 @@ export async function getPublicContent(): Promise<SiteData> {
       published: t.published,
       order: t.order,
     })),
+    gallery,
   };
 }
 

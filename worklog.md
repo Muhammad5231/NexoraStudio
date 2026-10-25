@@ -226,3 +226,26 @@ Work Log:
 
 Stage Summary:
 - Hero headline scale reduced ~30% (desktop cap 86px -> 61px); 3-line composition stable across 1350-1920px; no other sections affected
+
+---
+Task ID: 8
+Agent: main (Z.ai Code)
+Task: Premium Video & Photo Gallery feature (incremental, end-to-end)
+
+Work Log:
+- Inspected architecture first: hash-routed SPA (site-shell view switch), guard() auth + x-nexora-admin CSRF, media-upload route (MIME-trusted, superseded for gallery), Prisma/SQLite, admin view patterns (testimonials/projects)
+- Prisma: added GalleryMedia model (type/title/mediaPath/posterPath/thumbPath/altText/dims/duration/featured/published/displayOrder + [type,published,displayOrder] index) and Project.showInWork (default true); db:push; reversible backfill set showInWork=false on the 2 video-only seed projects (Kavya Studio Reels, Urban Nest Promo); seed-data updated to match for fresh installs; no records deleted
+- Central limits: src/lib/gallery-limits.ts (video 10 total/8 published/150MB/MP4+WebM; photo 24/18/12MB/JPEG+PNG+WebP) — single source for API + admin UI
+- Server-side file validation: src/lib/file-validation.ts — magic-byte sniffing (ftyp/EBML/JPEG/PNG/WebP), MOV explicitly rejected, server-generated UUID filenames, resolveGalleryPath() prevents path traversal; upload endpoint re-validates content (never trusts client MIME/extension)
+- APIs: GET /api/gallery (published only), admin GET/POST /api/admin/gallery (limits enforced inside $transaction), PATCH/DELETE /api/admin/gallery/[id] (publish-limit on transitions, replaced-file GC, shared-reference check before file deletion incl. projects/settings scan), POST reorder, POST upload (sharp thumbnails .thumb.webp for photos, poster validation, orphan cleanup on failure)
+- Public: views/gallery.tsx (sticky All/Videos/Photos filter with counts, editorial Motion grid with orientation-aware spans + featured badges, CSS-columns masonry Stills grid with thumbs, video modal with native controls + capture-phase Escape fix for shadow-DOM focus, photo lightbox with wrap-around arrow keys/counter/Escape, empty states, Work/Services back-path); wired into site-shell router case + TITLES, nav, footer, Work page header copy
+- Fixed real bug found in browser QA: duplicate arrow-key handlers (DialogContent onKeyDown + window effect listener) double-handled one keypress — React re-bound the window listener mid-dispatch, cancelling navigation; removed the DialogContent handler
+- Fixed Escape-with-native-video-focus bug via capture-phase window listener (Chromium media controls consume Escape from their closed shadow root)
+- Admin: views/gallery.tsx (Videos/Photos tabs, usage bars "X / N total · X / N published", search + status filter, XHR upload with progress + client-side pre-validation + auto poster capture/duration read + custom poster replacement, edit dialog with live preview, publish/feature toggles, move up/down reorder, delete with confirmation, full-limit messaging); wired into admin-app NAV/known-routes; Project editor got "Show in Work grid" toggle
+- Tests executed (all via curl/agent-browser, honestly run): anon admin API 401; cookie-without-CSRF 403; valid photo upload 201+thumb+dims; oversized 13MB photo 413; text renamed .mp4 415 (magic bytes); MP4 content in photo slot 415; valid video 201; create w/ missing file 400; drafts never in public API; 11th video 409; 9th published video PATCH 409; 25th photo 409; 19th published photo 409; PATCH metadata 200; reorder 200; shared-file delete safety (file survives while referenced, GC'd exactly at last reference — verified for video + poster + photo + thumb); browser E2E: upload via UI (auto-poster, progress, title autofill), publish, public gallery rendering (desktop+mobile), video playback (currentTime advanced, native controls), filters, lightbox nav, UI delete with confirm, storage back to 0 files; regression: home/admin dashboard/leads/projects/projects list (4 web-only projects in Work) all clean
+- Cleanup: all QA media + QA admin accounts (qa-gallery@, qa-browser@) deleted, storage dirs empty, tmp scripts removed; shipped gallery intentionally empty with curated empty states
+- Dev server restarted via .zscripts/dev.sh after Prisma client regeneration (old process served stale client → 500s)
+
+Stage Summary:
+- Gallery feature complete end-to-end, zero existing features removed; Work = websites only (reversible toggle), Gallery = video+photo with hard server-enforced limits
+- Storage: local public/uploads/gallery (documented: ephemeral hosts need a managed provider later — abstraction point is file-validation.ts + upload route)

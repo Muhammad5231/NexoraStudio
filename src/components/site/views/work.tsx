@@ -46,8 +46,8 @@ export default function WorkView() {
       <PageHeader
         kicker="Our Work"
         title="Projects with proof of craft."
-        sub="Every sample below is clearly labelled — Concept Projects are self-initiated demos until replaced with client work."
-        meta="Websites / Landing Pages / Video Editing / Featured"
+        sub="Website case studies only — every sample is clearly labelled, and Concept Projects are self-initiated demos until replaced with client work. Selected video edits and photography live in the Gallery."
+        meta="Websites / Landing Pages / Featured · Video & photo samples in Gallery"
       />
 
       {/* -------------------------------------------------- sticky filter bar */}

@@ -18,6 +18,7 @@ import type { SiteData } from "@/lib/types";
 const ServicesView = lazy(() => import("@/components/site/views/services"));
 const ServiceDetailView = lazy(() => import("@/components/site/views/service-detail"));
 const WorkView = lazy(() => import("@/components/site/views/work"));
+const GalleryView = lazy(() => import("@/components/site/views/gallery"));
 const CaseStudyView = lazy(() => import("@/components/site/views/case-study"));
 const AboutView = lazy(() => import("@/components/site/views/about"));
 const ContactView = lazy(() => import("@/components/site/views/contact"));
@@ -40,6 +41,7 @@ function ViewSkeleton() {
 const TITLES: Record<string, string> = {
   "": "Websites & Video Content for Growing Businesses",
   work: "Our Work",
+  gallery: "Gallery — Videos & Photography",
   services: "Services",
   about: "About the Studio",
   contact: "Start a Project",
@@ -122,6 +124,9 @@ export function SiteShell({ initial }: { initial: SiteData }) {
       break;
     case "work":
       view = route.segments[1] ? <CaseStudyView slug={route.segments[1]} /> : <WorkView />;
+      break;
+    case "gallery":
+      view = <GalleryView />;
       break;
     case "about":
       view = <AboutView />;
