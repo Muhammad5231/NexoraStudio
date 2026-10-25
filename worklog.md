@@ -116,3 +116,32 @@ API CONTRACT ISSUES FOUND (orchestrator action needed):
 1. MISSING ENDPOINT: GET /api/enquiries (admin paginated list — {items,total,page,pageSize}) does NOT exist; src/app/api/enquiries/route.ts only exports the public POST. Next.js answers 405 there. The Leads inbox is fully built against the documented contract — once a GET handler (search/status/service/sort params) lands, it works with zero admin-side changes. Until then the inbox shows an explanatory error banner; per-lead detail (GET/PATCH/DELETE /api/enquiries/:id) works from deep links.
 2. Integration blocker (outside my scope): src/components/site/views/home.tsx currently has `export default function HomeView` but site-shell.tsx imports `{ HomeView }` (named). This makes EVERY route — including /api/** and #/admin — return 500 until reconciled. I did not touch it per ownership rules.
 3. Minor: /api/media-upload works as documented at `api/media-upload` (spec's worklog said media/upload once — the real path is /api/media-upload; admin uses the real one).
+
+---
+Task ID: 3 (integration)
+Agent: orchestrator (main)
+Task: Integrate subagent work, fix contract mismatches, verify end-to-end, handover.
+
+Work Log:
+- Restored real site-context.tsx (2-b had left a temporary stub in place).
+- Fixed HomeView named/default export mismatch with site-shell import.
+- Added missing admin GET /api/enquiries (search/status/service filters + pagination) — leads inbox contract.
+- Wrapped /api/stats response in { stats } to match admin contract.
+- Fixed guard() union typing across all API routes (AdminUser | NextResponse + instanceof narrowing); added NextResponse imports.
+- Fixed seed media paths (.jpg -> .png), removed stale validator types.
+- Fixed lint: Counter reduced-motion setState, removed unused eslint-disables, nav menu close on link click, useNavigate removal.
+- Fixed framer-motion SSR hydration mismatch via useSyncExternalStore-mounted gate on AnimatePresence initial/exit.
+- Added scroll-to-top on every route path change (back/forward + manual hash).
+- Added GET /api/content + same-tab admin->public content freshness refetch.
+- Fixed auth/status path used by admin (api/auth).
+- Stealth honeypot: hidden field returns ok without storing (moved out of Zod schema).
+- Generated 11 AI media assets (public/media/*.png) for hero, reel card, portrait and 6 concept projects.
+- Wrote favicon.svg, robots.txt, sitemap.ts; silenced prisma query logging.
+- BROWSER VERIFICATION (agent-browser, desktop 1440 + mobile 375): home/hero renders, no console errors, no horizontal overflow; work filters (video=2, featured=3) + case study hero/chips; services overview + detail; about; privacy; 404 view; footer push on long pages.
+- Enquiry golden path: filled 2-step form as test user -> success state shown only after server persist -> lead confirmed in DB.
+- Admin golden path: one-time setup screen -> created admin -> dashboard with real metrics (1 lead, 6 projects, 8 services) -> lead detail status NEW->CONTACTED + private notes persisted -> created project "Glow Dental Clinic" -> published -> appeared on public site (same-tab via content refresh AND after reload) -> settings brand rename round-trip -> logout -> protected APIs return 401 without session -> wrong-password inline error -> CSRF header check (403) -> honeypot silently drops bots.
+- Cleaned ALL test artifacts: deleted test admin, test enquiry, test project. Site ships with zero credentials; first visitor of #/admin gets the documented setup screen.
+- Wrote README.md (setup, bootstrap, deployment, security, troubleshooting) + .env.example + real AUTH_SECRET in .env.
+
+Stage Summary:
+- All phases complete and verified in-browser. Lint + tsc clean. Project ready for handover: owner bootstraps their own admin at #/admin on first use.
