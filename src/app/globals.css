@@ -226,6 +226,19 @@
     background: transparent;
   }
 
+  /* footer wordmark — outlined display letters (see site/footer.tsx).
+     -webkit-text-stroke keeps a crisp ~1px outline at every viewport size
+     (unlike SVG strokes, which scale with the viewBox). */
+  .wordmark-letter {
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(242, 239, 231, 0.17);
+  }
+  @media (min-width: 640px) {
+    .wordmark-letter {
+      -webkit-text-stroke-width: 1.5px;
+    }
+  }
+
   /* underline sweep for nav links */
   .link-sweep {
     position: relative;
@@ -256,3 +269,4 @@
   outline-offset: 2px;
   box-shadow: 0 0 0 2px #0b0b0c;
 }
+

@@ -182,3 +182,16 @@ Work Log:
 
 Stage Summary:
 - Root cause was a global inherited text colour (body text-ivory) leaking into light admin surfaces; fixed at the body level with explicit theme declarations on each shell. Public site pixel-identical; admin inputs/buttons/dialogs/sheets now fully readable on desktop and mobile.
+---
+Task ID: 6 (hero polish + footer wordmark)
+Agent: orchestrator (main)
+Task: Polish the home hero section UI and add a refined giant text-logo watermark to the footer (per user sketch).
+
+Work Log:
+- Footer wordmark (footer.tsx + globals.css): brand-first-word letters spread edge-to-edge via flex justify-between, rendered as outlined display glyphs (.wordmark-letter: transparent fill + -webkit-text-stroke 1px mobile / 1.5px sm — chosen over SVG text because stroke stays crisp at every viewport). Baseline-aligned volt square dot (0.13em, rounded, soft glow) replaces the period glyph. Bottom mask-image fade dissolves the letters into the footer divider. Fully data-driven from settings.brand.name (first word, uppercased), aria-hidden + pointer-events-none + select-none, overflow-hidden guard against long brand names. Bottom bar margin retuned (mt-16 → mt-4/sm:mt-6).
+- Hero polish (home.tsx): headline line 1 gains a subtle ivory vertical gradient (bg-clip-text) for cinematic depth; offset volt outline frame (-right-3 -top-3, border-volt/25, sm+) layered behind the main media frame for depth; availability chip upgraded to volt-tinted border + soft volt glow; main frame shadow deepened.
+- Fixed a stale Turbopack CSS chunk (new .wordmark-letter rule not emitted until a real content change invalidated the chunk; verified rule present in served CSS afterwards).
+- BROWSER VERIFIED (agent-browser): desktop 1440 hero (gradient headline, volt frame, glowing chip), footer wordmark outlined edge-to-edge with volt dot; mobile 375 hero + footer wordmark scale correctly; no horizontal overflow (scrollWidth 375); zero console errors; lint clean; tsc src/ 0 errors; dev.log clean.
+
+Stage Summary:
+- Footer now carries an editorial giant outlined wordmark (better-formed version of the user's sketch: crisp strokes, volt dot, bottom dissolve, DB-driven). Hero gained gradient headline depth, a volt offset media frame and a glowing availability chip. Public site verified at both breakpoints with zero errors.

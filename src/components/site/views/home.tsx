@@ -111,7 +111,10 @@ function Hero() {
               <StaggeredLines
                 delay={0.1}
                 lines={[
-                  <span key="l1" className="block text-ivory">
+                  <span
+                    key="l1"
+                    className="block bg-gradient-to-b from-ivory via-ivory to-ivory/60 bg-clip-text text-transparent"
+                  >
                     {h.heroTitleLine1}
                   </span>,
                   <span key="l2" className="block text-ivory">
@@ -166,8 +169,13 @@ function Hero() {
             transition={{ duration: 1, delay: 0.35, ease: EASE }}
           >
             <motion.div style={reduce ? undefined : { x: sx, y: sy }} className="relative">
+              {/* offset accent frame — volt outline echoing the brand system */}
+              <div
+                aria-hidden="true"
+                className="absolute -right-3 -top-3 hidden h-full w-full rounded-2xl border border-volt/25 sm:block"
+              />
               {/* main frame — website work */}
-              <div className="relative overflow-hidden rounded-2xl border border-ivory/10 shadow-[0_40px_80px_-30px_rgba(0,0,0,0.8)]">
+              <div className="relative overflow-hidden rounded-2xl border border-ivory/10 shadow-[0_50px_100px_-30px_rgba(0,0,0,0.85)]">
                 <MediaFrame src={h.heroMediaMain} alt="Selected website work preview" ratio="4/3.2" className="rounded-2xl">
                   {/* browser chrome */}
                   <div className="absolute inset-x-0 top-0 flex items-center gap-1.5 border-b border-ivory/10 bg-ink/70 px-4 py-2.5 backdrop-blur-sm">
@@ -198,7 +206,7 @@ function Hero() {
               </motion.div>
 
               {/* availability chip */}
-              <div className="absolute -right-2 top-6 hidden items-center gap-2 rounded-full border border-ivory/15 bg-ink/85 px-4 py-2 backdrop-blur-md sm:flex">
+              <div className="absolute -right-2 top-6 hidden items-center gap-2 rounded-full border border-volt/30 bg-ink/85 px-4 py-2 shadow-[0_0_32px_-8px_rgba(198,255,58,0.45)] backdrop-blur-md sm:flex">
                 <span className="animate-pulse-dot h-1.5 w-1.5 rounded-full bg-volt" aria-hidden="true" />
                 <span className="font-display text-[10px] font-medium uppercase tracking-[0.18em] text-ivory/80">
                   Available for projects

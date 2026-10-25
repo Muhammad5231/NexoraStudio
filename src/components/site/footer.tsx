@@ -150,7 +150,30 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-16 flex flex-col gap-4 border-t border-ivory/10 pt-7 text-xs text-ivory/40 sm:flex-row sm:items-center sm:justify-between">
+        {/* giant outlined wordmark — pure presentation. Letters spread
+            edge-to-edge (justify-between) like an editorial watermark and
+            dissolve into the divider via the bottom mask. Fully data-driven:
+            rendered from the admin-editable brand name. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none mt-14 flex select-none items-baseline justify-between overflow-hidden px-1 font-display text-[clamp(3rem,12.5vw,11.5rem)] font-bold leading-[0.9] tracking-[-0.02em] [mask-image:linear-gradient(to_bottom,black_55%,transparent_96%)] sm:mt-20"
+        >
+          {(settings.brand.name.split(" ")[0] || "NEXORA")
+            .toUpperCase()
+            .split("")
+            .map((ch, i, arr) => (
+              <span key={i} className="wordmark-letter">
+                {ch}
+                {i === arr.length - 1 ? (
+                  <span
+                    className="ml-[0.06em] inline-block h-[0.13em] w-[0.13em] rounded-[0.025em] bg-volt shadow-[0_0_28px_rgba(198,255,58,0.45)] [-webkit-text-stroke:0]"
+                  />
+                ) : null}
+              </span>
+            ))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-4 border-t border-ivory/10 pt-7 text-xs text-ivory/40 sm:mt-6 sm:flex-row sm:items-center sm:justify-between">
           <p>
             © {year} {settings.footer.copyright}
           </p>
