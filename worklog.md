@@ -195,3 +195,20 @@ Work Log:
 
 Stage Summary:
 - Footer now carries an editorial giant outlined wordmark (better-formed version of the user's sketch: crisp strokes, volt dot, bottom dissolve, DB-driven). Hero gained gradient headline depth, a volt offset media frame and a glowing availability chip. Public site verified at both breakpoints with zero errors.
+
+---
+Task ID: 6
+Agent: main (Z.ai Code)
+Task: Change hero tagline to "Websites & video that make you impossible to ignore."
+
+Work Log:
+- Located tagline source: data-driven fields heroTitleLine1/2/Accent in settings-defaults.ts, rendered in src/components/site/views/home.tsx (Line1 gradient ivory, Line2 ivory + Accent volt)
+- Updated defaults: "Websites & video" / "that make you" / "impossible to ignore."
+- Settings are DB-backed (SiteSetting.home overrides defaults), so wrote a temp bun script to update the stored JSON row; script deleted after success
+- New tagline (49 chars vs old 31) wrapped to 5 lines at 104px display-1 cap, pushing CTAs below the fold at 1440x900; added hero-scoped .hero-display override (clamp 2.5rem -> 5.4rem cap) in globals.css; display-1 untouched for other sections
+- Investigated a transient Radix accordion useId hydration diff: reproduced neither on stashed old code nor on 2 fresh loads of new code — was a Fast Refresh artifact from loading mid-HMR; zero errors on clean loads
+- Verified desktop 1440 (4-line stack, CTAs + meta above fold) and mobile 375 (clean wrap, full-width CTAs) via agent-browser screenshots; lint clean; dev.log clean 200s
+
+Stage Summary:
+- Hero tagline live in both defaults and DB; hero-only type scale added (.hero-display) to preserve above-the-fold CTA visibility
+- No other sections affected; zero console/page errors on fresh desktop + mobile loads

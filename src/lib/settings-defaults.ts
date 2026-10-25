@@ -37,9 +37,9 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   home: {
     heroKicker: "Independent Creative Studio — India",
-    heroTitleLine1: "Websites that win",
-    heroTitleLine2: "Edits that",
-    heroTitleAccent: "hold it.",
+    heroTitleLine1: "Websites & video",
+    heroTitleLine2: "that make you",
+    heroTitleAccent: "impossible to ignore.",
     heroSubtitle:
       "Nexora is a one-person creative studio building distinctive websites and short-form video content for small businesses, institutes and creators across India — designed to be remembered, built to convert.",
     heroMeta: "Web Experiences / Visual Content / Digital Design",

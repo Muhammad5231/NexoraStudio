@@ -122,7 +122,7 @@ function Hero() {
                     <span className="text-volt">{h.heroTitleAccent}</span>
                   </span>,
                 ]}
-                lineClassName="display-1"
+                lineClassName="display-1 hero-display"
               />
             </h1>
 
