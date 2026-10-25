@@ -212,3 +212,17 @@ Work Log:
 Stage Summary:
 - Hero tagline live in both defaults and DB; hero-only type scale added (.hero-display) to preserve above-the-fold CTA visibility
 - No other sections affected; zero console/page errors on fresh desktop + mobile loads
+
+---
+Task ID: 7
+Agent: main (Z.ai Code)
+Task: Hero tagline too large per user screenshots — reduce headline size
+
+Work Log:
+- User reported hero tagline too big (screenshots at ~1350px effective CSS viewport showing 5-line wrap "Websites & / video / ...")
+- Reduced hero-scoped .hero-display from clamp(2.5rem, 6.9vw, 5.4rem) to clamp(2.35rem, 5vw, 3.8rem) in globals.css; display-1 and all other sections untouched
+- Verified via agent-browser at 1350x850 (user-like viewport), 1440x900 and mobile 375x812: headline now sets as clean 3 lines on desktop ("Websites & video" / "that make you" / "impossible to ignore."), full hero incl. CTAs + meta + scroll cue above fold; mobile proportionate
+- Transient dev-overlay badge seen mid-HMR only; zero page errors on fresh loads; lint clean; dev.log clean 200s
+
+Stage Summary:
+- Hero headline scale reduced ~30% (desktop cap 86px -> 61px); 3-line composition stable across 1350-1920px; no other sections affected
