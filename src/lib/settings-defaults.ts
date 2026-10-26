@@ -34,6 +34,8 @@ export const DEFAULT_SETTINGS: Settings = {
     keywords:
       "web design india, freelance web developer, video editing, reels editing, coaching institute website, landing pages",
     siteUrl: "",
+    ogImage: "/media/hero-main.png",
+    googleSiteVerification: "",
   },
   home: {
     heroKicker: "Independent Creative Studio — India",

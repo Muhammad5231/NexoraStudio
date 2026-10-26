@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import type { Settings } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -295,10 +296,44 @@ function SeoSection({ value, onSaved }: { value: Settings["seo"]; onSaved: (s: S
   const { saving, save } = useSectionSaver("seo", onSaved);
   const dirty = JSON.stringify(form) !== JSON.stringify(value);
 
+  const keywords = form.keywords.split(",").map((k) => k.trim()).filter(Boolean);
+  const checks: { label: string; ok: boolean; hint: string }[] = [
+    {
+      label: "Meta title length (30–60 chars)",
+      ok: form.title.trim().length >= 30 && form.title.trim().length <= 60,
+      hint: `${form.title.trim().length} characters now`,
+    },
+    {
+      label: "Meta description length (70–160 chars)",
+      ok: form.description.trim().length >= 70 && form.description.trim().length <= 160,
+      hint: `${form.description.trim().length} characters now`,
+    },
+    {
+      label: "Site URL set (canonical, sitemap & robots)",
+      ok: /^https?:\/\/[^\s]+\.[^\s]+/i.test(form.siteUrl.trim()) || /^[^\s]+\.[^\s]+/i.test(form.siteUrl.trim()),
+      hint: form.siteUrl.trim() ? form.siteUrl.trim() : "Add your live address, e.g. https://nexorastudio.in",
+    },
+    {
+      label: "Social share image (OG image)",
+      ok: form.ogImage.trim().length > 0,
+      hint: form.ogImage.trim() ? "Image ready for WhatsApp / X / Facebook previews" : "Pick an image — used when your link is shared",
+    },
+    {
+      label: "Google Search Console verification",
+      ok: form.googleSiteVerification.trim().length > 0,
+      hint: form.googleSiteVerification.trim() ? "Site ownership can be verified" : "Paste the verification code from Search Console",
+    },
+    {
+      label: "At least 5 keywords",
+      ok: keywords.length >= 5,
+      hint: `${keywords.length} keyword${keywords.length === 1 ? "" : "s"} now`,
+    },
+  ];
+
   return (
     <div className="space-y-4">
-      <SecCard title="SEO" desc="Meta title, description and keywords for search engines.">
-        <Field label="Meta title" htmlFor="seo-title">
+      <SecCard title="Search appearance" desc="Title, description and keywords shown on Google.">
+        <Field label="Meta title" htmlFor="seo-title" hint="Shown as the blue headline on Google — keep the brand near the end.">
           <Input id="seo-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
         </Field>
         <Field label="Meta description" htmlFor="seo-desc" hint="Aim for 150–160 characters.">
@@ -307,10 +342,55 @@ function SeoSection({ value, onSaved }: { value: Settings["seo"]; onSaved: (s: S
         <Field label="Keywords" htmlFor="seo-kw" hint="Comma-separated search terms.">
           <Textarea id="seo-kw" rows={2} value={form.keywords} onChange={(e) => setForm((f) => ({ ...f, keywords: e.target.value }))} />
         </Field>
-        <Field label="Site URL" htmlFor="seo-url" hint="Canonical address once the site is live, e.g. https://nexorastudio.in">
-          <Input id="seo-url" value={form.siteUrl} onChange={(e) => setForm((f) => ({ ...f, siteUrl: e.target.value }))} />
+      </SecCard>
+
+      <SecCard title="Technical SEO" desc="Canonical address, social sharing and Google Search Console.">
+        <Field
+          label="Site URL"
+          htmlFor="seo-url"
+          hint="Canonical address once the site is live — drives canonical link, sitemap.xml and robots.txt. e.g. https://nexorastudio.in"
+        >
+          <Input id="seo-url" value={form.siteUrl} onChange={(e) => setForm((f) => ({ ...f, siteUrl: e.target.value }))} placeholder="https://nexorastudio.in" />
+        </Field>
+        <MediaField
+          label="Social share image (OG image)"
+          value={form.ogImage}
+          onChange={(v) => setForm((f) => ({ ...f, ogImage: v }))}
+          id="seo-og"
+          hint="Shown when your link is shared on WhatsApp, X, LinkedIn or Facebook. 1200×630 works best."
+        />
+        <Field
+          label="Google site verification"
+          htmlFor="seo-gsc"
+          hint="In Google Search Console choose 'HTML tag' and paste only the content value, e.g. google-site-verification=abc123 → paste abc123."
+        >
+          <Input id="seo-gsc" value={form.googleSiteVerification} onChange={(e) => setForm((f) => ({ ...f, googleSiteVerification: e.target.value }))} placeholder="e.g. 4Xk2…" />
         </Field>
       </SecCard>
+
+      <SecCard title="SEO health" desc="Live checks based on the values above — aim for all green before launch.">
+        <ul className="space-y-2">
+          {checks.map((c) => (
+            <li key={c.label} className="flex items-start gap-2.5 text-sm">
+              {c.ok ? (
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+              ) : (
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-500" aria-hidden="true" />
+              )}
+              <span>
+                <span className={c.ok ? "font-medium text-ink" : "font-medium text-graphite"}>{c.label}</span>
+                <span className="block text-xs text-graphite">{c.hint}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="rounded-lg bg-ink/5 px-3 py-2 text-xs leading-relaxed text-graphite">
+          After launch: submit <span className="font-mono">/sitemap.xml</span> in Google Search Console (paste the
+          verification code above first), then request indexing of your home page. Sitemap and robots.txt update
+          automatically from the Site URL.
+        </p>
+      </SecCard>
+
       <SaveBar onSave={() => void save(form)} saving={saving} dirty={dirty} />
     </div>
   );

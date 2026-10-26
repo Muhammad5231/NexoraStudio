@@ -50,6 +50,20 @@ const TITLES: Record<string, string> = {
   admin: "Admin",
 };
 
+// Per-view meta descriptions (home uses the admin-managed SEO description).
+const VIEW_DESCRIPTIONS: Record<string, string> = {
+  work: "Selected website, landing page and video projects — crafted end-to-end by the studio.",
+  gallery: "Short-form video reels and photography showcase — promo edits, captioned reels and photo work.",
+  services: "Website design and development, short-form video editing, and website + content launch bundles.",
+  about: "Meet the independent developer-editor behind the studio — one pair of hands from first call to final delivery.",
+  contact: "Start a project — tell us about your idea and get an honest reply on scope, timeline and budget within 24 hours.",
+};
+
+function trimDesc(text: string): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > 300 ? `${clean.slice(0, 299)}…` : clean;
+}
+
 export function SiteShell({ initial }: { initial: SiteData }) {
   const route = useRoute();
   const reduce = useReducedMotion();
@@ -80,28 +94,68 @@ export function SiteShell({ initial }: { initial: SiteData }) {
     }
   }, [route.path]);
 
-  // document title + admin noindex
+  // document title + meta description + canonical + admin noindex
   useEffect(() => {
     const base = content.settings.brand.name || "Nexora Studio";
     const seg0 = route.segments[0] ?? "";
+    const homeDesc = content.settings.seo.description || "";
+    let description = homeDesc;
+
     if (seg0 === "work" && route.segments[1]) {
       const p = content.projects.find((x) => x.slug === route.segments[1]);
       // unknown slug renders the 404 view — title should say so
       document.title = p ? `${p.title} · Case Study` : `Page not found · ${base}`;
+      if (p) description = p.description || p.overview || homeDesc;
     } else if (seg0 === "services" && route.segments[1]) {
       const s = content.services.find((x) => x.slug === route.segments[1]);
       document.title = s ? `${s.title} · Services` : `Page not found · ${base}`;
+      if (s) description = s.summary || s.description || homeDesc;
     } else {
       document.title = TITLES[seg0] ? `${TITLES[seg0]} · ${base}` : `Page not found · ${base}`;
+      if (seg0 in VIEW_DESCRIPTIONS) description = VIEW_DESCRIPTIONS[seg0];
+      if (seg0 === "admin") description = "Studio admin panel — authorised access only.";
     }
 
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "robots";
-      document.head.appendChild(meta);
+    const setMeta = (selector: string, create: () => HTMLMetaElement, contentValue: string) => {
+      let el = document.querySelector<HTMLMetaElement>(selector);
+      if (!el) {
+        el = create();
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", contentValue);
+    };
+
+    setMeta(
+      'meta[name="description"]',
+      () => {
+        const el = document.createElement("meta");
+        el.name = "description";
+        return el;
+      },
+      trimDesc(description),
+    );
+
+    let robotsMeta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    if (!robotsMeta) {
+      robotsMeta = document.createElement("meta");
+      robotsMeta.name = "robots";
+      document.head.appendChild(robotsMeta);
     }
-    meta.content = isAdmin ? "noindex, nofollow" : "index, follow";
+    robotsMeta.content = isAdmin ? "noindex, nofollow" : "index, follow";
+
+    // canonical follows the admin-configured Site URL (single-URL SPA)
+    const siteUrl = (content.settings.seo.siteUrl || "").trim().replace(/\/+$/, "");
+    let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (siteUrl) {
+      if (!canonical) {
+        canonical = document.createElement("link");
+        canonical.rel = "canonical";
+        document.head.appendChild(canonical);
+      }
+      canonical.href = `${siteUrl}/`;
+    } else if (canonical) {
+      canonical.remove();
+    }
   }, [route, content, isAdmin]);
 
   if (isAdmin) {

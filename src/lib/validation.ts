@@ -43,12 +43,6 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Enter your password").max(200),
 });
 
-export const setupSchema = z.object({
-  name: z.string().trim().min(2, "Enter your name").max(80),
-  email: z.email("Enter a valid email").max(160),
-  password: z.string().min(8, "Minimum 8 characters").max(200),
-});
-
 export const passwordChangeSchema = z.object({
   currentPassword: z.string().min(1).max(200),
   newPassword: z.string().min(8, "Minimum 8 characters").max(200),

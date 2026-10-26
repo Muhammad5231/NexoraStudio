@@ -8,10 +8,12 @@ import type { AdminUser } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PASSWORD_RE } from "./admin-utils";
+import { Lock } from "lucide-react";
 
 // ---------------------------------------------------------------------------
-// First-run setup + login screens. Dark, branded, focused. No public chrome.
+// Login screen. Admin accounts are provisioned by the studio (never created
+// through the UI) — this is the only door into the panel. Dark, branded,
+// focused. No public chrome.
 // ---------------------------------------------------------------------------
 
 function AuthShell({
@@ -94,60 +96,6 @@ function SubmitButton({ busy, children }: { busy: boolean; children: ReactNode }
   );
 }
 
-/* -------------------------------------------------------------------- Setup */
-export function SetupScreen({ brandName, onAuthed }: { brandName: string; onAuthed: (user: AdminUser) => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (name.trim().length < 2) return setError("Enter your name (at least 2 characters).");
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Enter a valid email address.");
-    if (!PASSWORD_RE.test(password))
-      return setError("Password needs at least 8 characters, including a letter and a number.");
-    setBusy(true);
-    try {
-      const res = await api<{ user: AdminUser }>("api/auth", {
-        body: { action: "setup", name: name.trim(), email: email.trim(), password },
-      });
-      onAuthed(res.user);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Setup failed. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <AuthShell brandName={brandName} kicker="First-run setup" title="Create your admin account">
-      <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
-        <div className="rounded-lg border border-volt/25 bg-volt/10 px-3 py-2.5 text-xs leading-relaxed text-ivory">
-          This screen only appears once — it disappears after your admin account is created.
-        </div>
-        <FieldRow id="setup-name" label="Your name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Aarav Sharma" autoComplete="name" required />
-        <FieldRow id="setup-email" label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@studio.com" autoComplete="email" required />
-        <FieldRow
-          id="setup-password"
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Min 8 chars, letter + number"
-          autoComplete="new-password"
-          required
-        />
-        <p className="text-xs text-smoke">Use at least 8 characters with a letter and a number — you&apos;ll need this to sign in.</p>
-        <InlineError message={error} />
-        <SubmitButton busy={busy}>Create admin account</SubmitButton>
-      </form>
-    </AuthShell>
-  );
-}
-
 /* -------------------------------------------------------------------- Login */
 export function LoginScreen({ brandName, onAuthed }: { brandName: string; onAuthed: (user: AdminUser) => void }) {
   const [email, setEmail] = useState("");
@@ -175,7 +123,11 @@ export function LoginScreen({ brandName, onAuthed }: { brandName: string; onAuth
   return (
     <AuthShell brandName={brandName} kicker="Admin panel" title="Sign in to continue">
       <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
-        <FieldRow id="login-email" label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@studio.com" autoComplete="email" required />
+        <div className="flex items-start gap-2.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2.5 text-xs leading-relaxed text-smoke">
+          <Lock className="mt-0.5 size-3.5 shrink-0 text-volt" aria-hidden="true" />
+          <span>Admin access is restricted to the studio account. There is no sign-up — credentials are issued by the studio owner.</span>
+        </div>
+        <FieldRow id="login-email" label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nexora@studio.com" autoComplete="email" required />
         <FieldRow id="login-password" label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" required />
         <InlineError message={error} />
         <SubmitButton busy={busy}>Sign in</SubmitButton>

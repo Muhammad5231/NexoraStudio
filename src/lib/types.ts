@@ -30,6 +30,8 @@ export type Settings = {
     description: string;
     keywords: string;
     siteUrl: string;
+    ogImage: string; // social share image (absolute URL or /uploads/… path)
+    googleSiteVerification: string; // Search Console <meta name="google-site-verification"> content
   };
   home: {
     heroKicker: string;

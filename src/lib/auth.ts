@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
@@ -12,14 +13,37 @@ import type { AdminUser } from "@/lib/types";
 
 const COOKIE_NAME = "nx_session";
 const SESSION_DAYS = 7;
+const DEV_FALLBACK_SECRET = "nexora-dev-secret-do-not-use-in-production-0f3a9c";
+
+let cachedSecret: Uint8Array | null = null;
 
 function secretKey(): Uint8Array {
-  // AUTH_SECRET must be provided in production (.env). A deterministic dev
-  // fallback keeps local development frictionless — README documents this.
-  const secret =
-    process.env.AUTH_SECRET ||
-    "nexora-dev-secret-do-not-use-in-production-0f3a9c";
-  return new TextEncoder().encode(secret);
+  if (cachedSecret) return cachedSecret;
+
+  const envSecret = process.env.AUTH_SECRET?.trim();
+  if (envSecret) {
+    if (envSecret.length < 32) {
+      console.warn("[auth] AUTH_SECRET is shorter than 32 characters — use a long random value in production.");
+    }
+    cachedSecret = new TextEncoder().encode(envSecret);
+    return cachedSecret;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    // Fail-secure: never ship a known constant. A random per-boot secret keeps
+    // the panel working after an unconfigured deploy; sessions simply reset on
+    // restart. Set AUTH_SECRET in the environment for stable sessions.
+    console.warn(
+      "[auth] AUTH_SECRET is not set — generated a random secret for this boot. " +
+        "All sessions will invalidate on restart. Set AUTH_SECRET in your environment."
+    );
+    cachedSecret = new TextEncoder().encode(randomBytes(48).toString("hex"));
+    return cachedSecret;
+  }
+
+  // Deterministic dev fallback keeps local development frictionless.
+  cachedSecret = new TextEncoder().encode(DEV_FALLBACK_SECRET);
+  return cachedSecret;
 }
 
 export async function hashPassword(password: string): Promise<string> {

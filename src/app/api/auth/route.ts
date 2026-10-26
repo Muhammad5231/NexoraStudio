@@ -4,21 +4,27 @@ import { db } from "@/lib/db";
 import { ensureSeeded } from "@/lib/seed";
 import { createSession, destroySession, getSessionUser, hashPassword, validatePasswordStrength, verifyPassword } from "@/lib/auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
-import { loginSchema, setupSchema, passwordChangeSchema } from "@/lib/validation";
+import { loginSchema, passwordChangeSchema } from "@/lib/validation";
 import { fail, ok, serverError, zodMessage } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
 // ---------------------------------------------------------------------------
-// GET /api/auth — first-run detection + session check
+// Admin authentication. There is NO account-creation endpoint by design:
+// exactly one studio admin account is provisioned at startup (see
+// src/lib/seed.ts → ensureFixedAdmin). This API only supports:
+//   GET  — session check
+//   POST — { action: "login" | "logout" | "password" }
 // ---------------------------------------------------------------------------
+
+/** Dummy hash so "unknown email" and "wrong password" take the same time. */
+const DECOY_HASH = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8DGjOtYtT9GLz9sR5Nb6mRxY1fNJBW";
 
 export async function GET() {
   try {
-    const adminCount = await db.adminUser.count();
+    await ensureSeeded();
     const user = await getSessionUser();
     return ok({
-      setupRequired: adminCount === 0,
       authenticated: !!user,
       user: user ? { name: user.name, email: user.email, role: user.role } : null,
     });
@@ -26,11 +32,6 @@ export async function GET() {
     return serverError("auth-status");
   }
 }
-
-// ---------------------------------------------------------------------------
-// POST /api/auth — single endpoint, action-dispatched:
-//   { action: "setup" | "login" | "logout" | "password", ... }
-// ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,48 +46,30 @@ export async function POST(req: NextRequest) {
 
     const action = (body as { action?: string })?.action;
 
-    // ---- first-run bootstrap --------------------------------------------
-    if (action === "setup") {
-      const parsed = setupSchema.safeParse(body);
-      if (!parsed.success) return fail(400, zodMessage(parsed.error));
-
-      const strengthError = validatePasswordStrength(parsed.data.password);
-      if (strengthError) return fail(400, strengthError);
-
-      const adminCount = await db.adminUser.count();
-      if (adminCount > 0) {
-        return fail(403, "Setup is already complete. Please sign in.");
-      }
-
-      const rl = rateLimit(`setup:${ip}`, 5, 60 * 60 * 1000);
-      if (!rl.ok) return fail(429, "Too many attempts. Try again later.");
-
-      const admin = await db.adminUser.create({
-        data: {
-          name: parsed.data.name,
-          email: parsed.data.email.toLowerCase(),
-          passwordHash: await hashPassword(parsed.data.password),
-          role: "OWNER",
-        },
-      });
-      await createSession(admin.id);
-      return ok({ user: { name: admin.name, email: admin.email, role: admin.role } });
-    }
-
     // ---- login ------------------------------------------------------------
     if (action === "login") {
       const parsed = loginSchema.safeParse(body);
       if (!parsed.success) return fail(400, zodMessage(parsed.error));
 
-      const rl = rateLimit(`login:${ip}`, 8, 15 * 60 * 1000);
-      if (!rl.ok) {
-        return fail(429, `Too many attempts. Try again in ${Math.ceil(rl.retryAfterSec / 60)} min.`);
+      const email = parsed.data.email.toLowerCase();
+
+      // Two buckets: per-IP stops volume attacks, per-email stops targeted
+      // guessing from rotating addresses.
+      const rlIp = rateLimit(`login:${ip}`, 8, 15 * 60 * 1000);
+      const rlEmail = rateLimit(`login-email:${email}`, 10, 15 * 60 * 1000);
+      const blocked = !rlIp.ok ? rlIp : !rlEmail.ok ? rlEmail : null;
+      if (blocked) {
+        return fail(429, `Too many attempts. Try again in ${Math.ceil(blocked.retryAfterSec / 60)} min.`);
       }
 
       const admin = await db.adminUser.findUnique({
-        where: { email: parsed.data.email.toLowerCase() },
+        where: { email },
       });
-      const valid = admin ? await verifyPassword(parsed.data.password, admin.passwordHash) : false;
+      // Always run a bcrypt compare, even for unknown emails, so response
+      // timing cannot reveal which addresses are valid.
+      const valid = admin
+        ? await verifyPassword(parsed.data.password, admin.passwordHash)
+        : await verifyPassword(parsed.data.password, DECOY_HASH);
       if (!admin || !valid) {
         return fail(401, "Incorrect email or password.");
       }
@@ -110,6 +93,9 @@ export async function POST(req: NextRequest) {
 
       const strengthError = validatePasswordStrength(parsed.data.newPassword);
       if (strengthError) return fail(400, strengthError);
+
+      const rl = rateLimit(`password:${user.id}`, 5, 60 * 60 * 1000);
+      if (!rl.ok) return fail(429, "Too many attempts. Try again later.");
 
       const admin = await db.adminUser.findUnique({ where: { id: user.id } });
       if (!admin) return fail(401, "Account not found.");

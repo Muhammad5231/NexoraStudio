@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { AdminProvider } from "./admin-context";
-import { AuthLoading, LoginScreen, SetupScreen } from "./auth-screens";
+import { AuthLoading, LoginScreen } from "./auth-screens";
 import { DashboardView } from "./dashboard";
 import { LeadsView } from "./leads";
 import { ProjectEditor, ProjectList } from "./projects";
@@ -37,7 +37,7 @@ import { SettingsView } from "./settings";
 // content) → sub-view by hash-route segments under #/admin.
 // ---------------------------------------------------------------------------
 
-type AuthPhase = "loading" | "setup" | "login" | "authed";
+type AuthPhase = "loading" | "login" | "authed";
 
 const NAV = [
   { seg: "", label: "Dashboard", icon: LayoutDashboard },
@@ -281,9 +281,11 @@ export default function AdminApp({ route, brandName }: { route: Route; brandName
   }, [route.path, refreshBadge]);
 
   // Initial session check — applied from the fetch callback (never inline).
+  // The admin account is provisioned by the studio (never user-created), so
+  // unauthenticated visitors always land on the login screen.
   useEffect(() => {
     let alive = true;
-    api<{ setupRequired: boolean; authenticated: boolean; user: AdminUser | null }>("api/auth").then(
+    api<{ authenticated: boolean; user: AdminUser | null }>("api/auth").then(
       (status) => {
         if (!alive) return;
         if (status.authenticated && status.user) {
@@ -291,7 +293,7 @@ export default function AdminApp({ route, brandName }: { route: Route; brandName
           applyPhase("authed");
         } else {
           setUser(null);
-          applyPhase(status.setupRequired ? "setup" : "login");
+          applyPhase("login");
         }
       },
       () => {
@@ -325,7 +327,6 @@ export default function AdminApp({ route, brandName }: { route: Route; brandName
   }
 
   if (phase === "loading") return <AuthLoading brandName={brandName} />;
-  if (phase === "setup") return <SetupScreen brandName={brandName} onAuthed={handleAuthed} />;
   if (phase === "login" || !user) return <LoginScreen brandName={brandName} onAuthed={handleAuthed} />;
 
   return (

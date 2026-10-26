@@ -75,6 +75,54 @@ export function validateUploadContent(bytes: Buffer, limit: KindLimit): { ok: tr
   return { ok: true, ext: sniff.ext };
 }
 
+/**
+ * Superset content sniff for the general media upload (project covers, OG
+ * images, portraits…). Like the gallery sniffer, the client-declared MIME type
+ * and filename are never trusted — the real type comes from magic bytes.
+ * Accepts jpg / png / gif / webp / avif / mp4 / mov / webm.
+ */
+export function sniffGenericUpload(bytes: Buffer): { ok: boolean; ext?: string; reason?: string } {
+  if (bytes.length < 12) return { ok: false, reason: "File is too small to be valid media." };
+
+  // ISO-BMFF family (mp4 / mov / avif): bytes 4-8 are the "ftyp" brand.
+  if (bytes.subarray(4, 8).toString("latin1") === "ftyp") {
+    const brand = bytes.subarray(8, 12).toString("latin1");
+    if (brand.startsWith("qt")) return { ok: true, ext: "mov" };
+    if (brand.startsWith("avi")) return { ok: true, ext: "avif" };
+    return { ok: true, ext: "mp4" };
+  }
+
+  // WebM / Matroska: EBML header 0x1A45DFA3
+  if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
+    return { ok: true, ext: "webm" };
+  }
+
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return { ok: true, ext: "jpg" };
+  }
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+    bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) {
+    return { ok: true, ext: "png" };
+  }
+
+  // GIF: "GIF87a" / "GIF89a"
+  if (bytes.subarray(0, 4).toString("latin1") === "GIF8") {
+    return { ok: true, ext: "gif" };
+  }
+
+  // WebP: "RIFF" .... "WEBP"
+  if (bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP") {
+    return { ok: true, ext: "webp" };
+  }
+
+  return { ok: false, reason: "Unrecognised file content — not a valid media file." };
+}
+
 /* ------------------------------------------------------------------ storage */
 
 const GALLERY_ROOT = path.join(process.cwd(), "public", "uploads", "gallery");
