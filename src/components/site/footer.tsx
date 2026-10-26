@@ -175,7 +175,10 @@ export function Footer() {
         </div>
 
         <div className="mt-4 flex flex-col gap-4 border-t border-ivory/10 pt-7 text-xs text-ivory/40 sm:mt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p>
+          {/* year is computed at render time on both sides — identical except
+              across a New-Year midnight boundary, which suppressHydrationWarning
+              safely covers while keeping the SSR year for SEO */}
+          <p suppressHydrationWarning>
             © {year} {settings.footer.copyright}
           </p>
           <div className="flex items-center gap-5">

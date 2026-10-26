@@ -281,3 +281,21 @@ Work Log:
 Stage Summary:
 - First screen now shows ONLY the hero: full-viewport (min-h-svh) cinematic composition with vertically centered content and bottom-anchored scroll cue; marquee and all subsequent sections begin exactly below the fold on desktop and flow naturally on mobile/short viewports.
 - Pure layout change — no settings/DB impact; parallax, reduced-motion guards, and all data-driven fields untouched.
+
+---
+Task ID: 11
+Agent: main (Z.ai Code)
+Task: Hydration mismatch console error reported (Radix accordion id/aria-controls/aria-labelledby differ between server HTML and client render).
+
+Work Log:
+- Analyzed the pasted React diff: EVERY mismatched attribute is a Radix-internal generated id (radix-_R_*); zero content/class/structure differences — signature of older SSR HTML hydrated by a newer client bundle (dev Fast Refresh/HMR across this session's hero edits + dev-server restart), not app-data randomness.
+- Reproduced the negative: multiple fresh loads (1440/768/375/1664 viewports) via agent-browser → agent-browser errors: none, console: no hydration warnings.
+- Audited code for genuine SSR/client divergence: router uses useSyncExternalStore with EMPTY_ROUTE server snapshot (deep links safe); SiteShell has a hydration-safe mounted flag; lazy views + Suspense; site-shell/site-context render deterministically from `initial` data.
+- Pattern scan (Math.random/Date/typeof window) across src: all hits live in admin-only components, event handlers, or server libs — except footer.tsx year = new Date().getFullYear() during render (real but only diverges across a New-Year midnight). Hardened with suppressHydrationWarning on that <p> (keeps SSR year for SEO).
+- Functional proof the flagged component is healthy: FAQ accordion click → data-state=open, content visible (7 triggers found).
+- Post-fix fresh load: errors none, console clean, footer year renders, lint + tsc (src) pass.
+
+Stage Summary:
+- No app bug existed behind the report; it was a dev-mode stale-shell/HMR artifact (hard reload clears it; production HTML+JS always ship from the same build, so this class cannot occur there).
+- One defensive fix applied: footer copyright year suppressHydrationWarning.
+- Verification discipline reinforced: hydration conclusions only from fresh loads (never mid-HMR), consistent with the earlier session's git-stash comparison method.
