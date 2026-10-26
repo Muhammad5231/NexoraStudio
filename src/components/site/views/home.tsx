@@ -87,7 +87,7 @@ function Hero() {
 
   return (
     <section
-      className="grain relative overflow-hidden bg-ink pb-16 pt-32 sm:pb-20 sm:pt-40 lg:pb-24"
+      className="grain relative flex min-h-svh flex-col overflow-hidden bg-ink pb-14 pt-32 sm:pb-16 sm:pt-40 lg:pb-10"
       onMouseMove={(e) => {
         if (reduce) return;
         mx.set((e.clientX / window.innerWidth - 0.5) * 18);
@@ -106,8 +106,8 @@ function Hero() {
       <div className="absolute -top-32 right-[-6%] h-[620px] w-[620px] rounded-full bg-volt/[0.08] blur-[160px]" aria-hidden="true" />
       <div className="absolute bottom-0 left-[-10%] h-[300px] w-[400px] rounded-full bg-volt/[0.05] blur-[120px]" aria-hidden="true" />
 
-      <motion.div style={reduce ? undefined : { y: heroY, opacity: heroOpacity }} className="container-x relative z-10">
-        <div className="grid items-center gap-14 lg:grid-cols-12 lg:gap-8">
+      <motion.div style={reduce ? undefined : { y: heroY, opacity: heroOpacity }} className="container-x relative z-10 flex flex-1 flex-col">
+        <div className="grid flex-1 items-center gap-14 lg:grid-cols-12 lg:gap-8">
           {/* copy */}
           <div className="lg:col-span-7">
             <motion.p
@@ -254,7 +254,7 @@ function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.2, duration: 0.8 }}
-          className="mt-16 hidden items-center gap-3 lg:flex"
+          className="hidden items-center gap-3 pt-10 lg:flex"
           aria-hidden="true"
         >
           <span className="font-display text-[10px] uppercase tracking-[0.25em] text-ivory/40">Scroll</span>

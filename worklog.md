@@ -267,3 +267,17 @@ Stage Summary:
 - Hero is now a layered cinematic composition: volt-glow media stack with crosshair details, blended image edges, data-driven volt-dot meta strip, glowing primary CTA, vignetted grid — all respecting prefers-reduced-motion and existing brand tokens (ink/ivory/volt, Space Grotesk).
 - Root cause class established: Turbopack can serve stale Tailwind CSS chunks after class-string changes; remedy = restart dev server with a cleared .next when newly added utilities silently don't apply.
 - No DB or settings changes; all content remains data-driven from settings.home.
+
+---
+Task ID: 10
+Agent: main (Z.ai Code)
+Task: Hero section must fill the entire window height (user: "hero section window ka pura size lena chahiye").
+
+Work Log:
+- User screenshot showed the marquee strip visible inside the first screen; requirement = hero height == full viewport so everything below sits under the fold.
+- Restructured Hero in src/components/site/views/home.tsx: section → `flex min-h-svh flex-col` (Tailwind v4 svh unit, safe on mobile browser chrome) with reduced bottom padding (pb-14/sm:pb-16/lg:pb-10); container motion.div → `flex flex-1 flex-col`; grid → `flex-1 items-center` so the copy+media columns center vertically in the full-height hero; scroll cue changed from mt-16 to `pt-10` so it anchors near the bottom edge of the viewport.
+- Verified via agent-browser: at 1664×925 hero height = 925 = viewport, marqueeTop = 925 (exactly at the fold); at 1366×680 hero grows content-driven with no clipping; at 375×812 hero = 1155 with reel fully inside. agent-browser errors: none. eslint + tsc (src) pass; dev.log clean.
+
+Stage Summary:
+- First screen now shows ONLY the hero: full-viewport (min-h-svh) cinematic composition with vertically centered content and bottom-anchored scroll cue; marquee and all subsequent sections begin exactly below the fold on desktop and flow naturally on mobile/short viewports.
+- Pure layout change — no settings/DB impact; parallax, reduced-motion guards, and all data-driven fields untouched.
