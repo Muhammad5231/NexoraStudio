@@ -356,3 +356,20 @@ Stage Summary:
 - Ops: dev-server persistence is a sandbox constraint, not a project bug. Watchdog cron 478172 bridges the gap until reboot; after any sandbox restart the boot dev.sh owns the server and the watchdog may be deleted via cron tool (job nexora-dev-server-keepalive).
 
 Follow-up (Task 14 cont.): installed second interleaved watchdog job (id 478184) to halve gap windows; verified first watchdog tick restored HTTP 200 and full SSR output (accordion markup + JSON-LD + brand present). Temp test files cleaned. Steady state: ~9.25 min hold per tick, two jobs at 300s offset → expected uptime ≈ 88-90%, gaps ≤ ~2.5 min.
+
+---
+Task ID: 14
+Agent: Z.ai Code (main)
+Task: (a) Watchdog cron job 478172 — dev server down, restart per protocol. (b) User re-reported Radix accordion hydration mismatch. (c) Discovered large video uploads die at the preview gateway while posters succeed — root-caused and fixed with chunked uploads.
+
+Work Log:
+- Watchdog: curl → 000 (server reaped at session end; log showed clean shutdown, no crash). Followed protocol: pkill, foreground `timeout 555 bun run dev` (600s Bash timeout), held ~9 min, SIGTERM by timer, post-hold curl → 000 ("did not survive, next tick will retry"). Sandbox reaps background processes between tool calls, so detached starts do not persist; the foreground-hold cron is the keep-alive mechanism.
+- During the hold the user's own traffic hit the new server: GET /api/auth, /api/stats, /api/admin/gallery 200 and POST /api/admin/gallery/upload 201 — but disk showed only 4 poster JPGs (16:58–17:47), videos/ EMPTY, DB gallery records ZERO. Conclusion: small poster uploads (~80 KB) pass the preview gateway; the 150 MB video POST never arrives (gateway caps request bodies). "Save video" stayed disabled because mediaPath was never produced, hence no records.
+- Hydration report: identical class to Task 11 — every differing attribute is a Radix-internal useId (aria-controls/id/aria-labelledby radix-_R_*), triggered in a tab that survived a server restart + HMR cycles (stale SSR HTML vs fresh bundle). Fresh-load proof re-run post-restart: 2 loads, page errors NONE, warm reload console clean, 7 accordion triggers rendered. No app bug; production ships one immutable build so this class cannot occur there.
+- Chunked upload fix: route.ts gained handleChunkedVideo() — FormData uploadId (strict uuid v4 regex, no path traversal), chunkIndex/totalChunks bounds (≤48 chunks × 4 MB), per-chunk write to public/uploads/gallery/.tmp/<uuid>/NNNN.part, final chunk assembles + magic-byte re-validation + 150 MB cap, promotes to videos/<uuid>.<ext>, temp dir removed; fire-and-forget 24 h stale-temp purge. Client uploadWithProgress() rewritten: single-shot for photos/posters/small videos, sequential 4 MB chunk XHRs with aggregated progress for larger videos.
+- Tests: curl 3-chunk upload → 200/200/201, reassembled file BYTE-IDENTICAL (cmp); traversal uploadId → 400; missing middle chunk → 409 + temp dir cleaned. Browser E2E: dialog upload of an 11 MB file → exactly 3 POSTs (200,200,201), video preview streaming (206), title auto-fill, zero errors. lint + tsc clean; test artifacts removed (videos/ and .tmp/ left empty).
+
+Stage Summary:
+- Gallery video upload now survives gateway body-size limits end to end; photos/posters keep the single-request path. This was the real remaining blocker behind the "Save video" greyed-out state.
+- Dev-server lifecycle documented: watchdog cron holds it in foreground ~9 min per tick; background daemons are reaped by the sandbox between tool calls.
+- Hydration report re-verified as dev-only artifact (Task 11 conclusion unchanged); hard reload clears it.

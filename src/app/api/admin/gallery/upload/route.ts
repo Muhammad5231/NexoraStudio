@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 import { guard, isNextResponse, fail, ok, serverError } from "@/lib/api-helpers";
@@ -26,6 +26,90 @@ export const dynamic = "force-dynamic";
 const THUMB_MAX_WIDTH = 640;
 const THUMB_QUALITY = 78;
 
+// Chunked video uploads: reverse proxies / preview gateways often cap request
+// body size, so large videos are sent as a series of ≤4 MB chunks that the
+// server reassembles. Mirrors the client's CHUNK_SIZE in gallery.tsx.
+const CHUNK_SIZE = 4 * 1024 * 1024;
+const MAX_CHUNKS = 48; // 48 × 4 MB = 192 MB ≥ the 150 MB video cap
+const UPLOAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function tmpRoot(): string {
+  return path.join(process.cwd(), "public", "uploads", "gallery", ".tmp");
+}
+
+/** Best-effort removal of abandoned temp uploads (older than 24 h). */
+async function purgeStaleTemp(): Promise<void> {
+  try {
+    const root = tmpRoot();
+    const entries = await readdir(root).catch(() => [] as string[]);
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (const entry of entries) {
+      if (!UPLOAD_ID_RE.test(entry)) continue;
+      const dir = path.join(root, entry);
+      const info = await stat(dir).catch(() => null);
+      if (info && info.mtimeMs < cutoff) await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  } catch {
+    /* housekeeping must never fail a request */
+  }
+}
+
+/**
+ * Reassembly path for chunked video uploads. Writes every chunk into a
+ * session-scoped temp dir (server-generated names only), then concatenates,
+ * re-validates total size + magic bytes, and promotes the result into videos/.
+ */
+async function handleChunkedVideo(formData: FormData): Promise<NextResponse> {
+  void purgeStaleTemp();
+
+  const uploadId = String(formData.get("uploadId") ?? "");
+  const chunkIndex = Number(formData.get("chunkIndex"));
+  const totalChunks = Number(formData.get("totalChunks"));
+
+  if (!UPLOAD_ID_RE.test(uploadId)) return fail(400, "Invalid upload session — please retry the upload.");
+  if (!Number.isInteger(chunkIndex) || !Number.isInteger(totalChunks)) return fail(400, "Invalid chunk numbers.");
+  if (totalChunks < 1 || totalChunks > MAX_CHUNKS) return fail(400, "Invalid chunk count — please retry the upload.");
+  if (chunkIndex < 0 || chunkIndex >= totalChunks) return fail(400, "Chunk out of range — please retry the upload.");
+
+  const chunk = formData.get("file");
+  if (!(chunk instanceof File)) return fail(400, "No chunk provided.");
+  if (chunk.size === 0) return fail(400, "Uploaded chunk is empty.");
+  if (chunk.size > CHUNK_SIZE * 1.5) return fail(413, "Chunk too large.");
+
+  const tmpDir = path.join(tmpRoot(), uploadId);
+  await mkdir(tmpDir, { recursive: true });
+  const partName = `${String(chunkIndex).padStart(4, "0")}.part`;
+  await writeFile(path.join(tmpDir, partName), Buffer.from(await chunk.arrayBuffer()));
+
+  // Intermediate chunks stop here — the client keeps going.
+  if (chunkIndex < totalChunks - 1) {
+    return ok({ received: chunkIndex, of: totalChunks });
+  }
+
+  // Final chunk: verify every part arrived, then assemble.
+  const parts = (await readdir(tmpDir)).filter((f) => f.endsWith(".part")).sort();
+  if (parts.length !== totalChunks) {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+    return fail(409, "Some chunks did not arrive — please retry the upload.");
+  }
+
+  const buffers: Buffer[] = [];
+  for (const part of parts) {
+    buffers.push(await readFile(path.join(tmpDir, part)));
+  }
+  await rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
+
+  const limit = limitForKind("video");
+  const verdict = validateUploadContent(Buffer.concat(buffers), limit);
+  if (!verdict.ok) return fail(verdict.status, verdict.error);
+
+  const dir = galleryDir("video");
+  await mkdir(dir, { recursive: true });
+  const name = generatedName(verdict.ext);
+  await writeFile(path.join(dir, name), Buffer.concat(buffers));
+  return ok({ url: `/uploads/gallery/videos/${name}` }, 201);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await guard(req);
@@ -33,6 +117,11 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData().catch(() => null);
     if (!formData) return fail(400, "Expected multipart form data.");
+
+    // Chunked video path (uploadId present → part of a multi-request upload)
+    if (formData.get("uploadId")) {
+      return handleChunkedVideo(formData);
+    }
 
     const rawKind = formData.get("kind");
     const kind = rawKind === "video" || rawKind === "photo" || rawKind === "poster" ? rawKind : null;

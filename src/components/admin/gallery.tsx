@@ -46,13 +46,12 @@ function formatDuration(sec: number): string | null {
 }
 
 /* ------------------------------------------------------------- upload helper */
-function uploadWithProgress<T>(
-  file: File | Blob,
-  filename: string,
-  mime: string,
-  kind: "video" | "photo" | "poster",
-  onProgress: (percent: number) => void
-): Promise<T> {
+// Large videos are sent as sequential ≤4 MB chunks (reassembled server-side) —
+// preview gateways and reverse proxies commonly reject single huge POST bodies.
+// Mirrors CHUNK_SIZE in src/app/api/admin/gallery/upload/route.ts.
+const CHUNK_SIZE = 4 * 1024 * 1024;
+
+function xhrSend<T>(fd: FormData, onProgress: (percent: number) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/admin/gallery/upload");
@@ -67,11 +66,52 @@ function uploadWithProgress<T>(
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response as T);
       else reject(new Error(data.error || `Upload failed (${xhr.status}).`));
     };
-    const fd = new FormData();
-    fd.append("kind", kind);
-    fd.append("file", file instanceof File ? file : new File([file], filename, { type: mime }));
     xhr.send(fd);
   });
+}
+
+async function uploadWithProgress<T>(
+  file: File | Blob,
+  filename: string,
+  mime: string,
+  kind: "video" | "photo" | "poster",
+  onProgress: (percent: number) => void
+): Promise<T> {
+  const asFile = file instanceof File ? file : new File([file], filename, { type: mime });
+
+  // Small files (all photos/posters, short videos) go up in one request.
+  if (kind !== "video" || asFile.size <= CHUNK_SIZE) {
+    const fd = new FormData();
+    fd.append("kind", kind);
+    fd.append("file", asFile);
+    return xhrSend<T>(fd, onProgress);
+  }
+
+  // Chunked video upload: sequential parts, aggregated progress.
+  const uploadId = crypto.randomUUID();
+  const totalChunks = Math.ceil(asFile.size / CHUNK_SIZE);
+  let uploadedBytes = 0;
+  let result: T | null = null;
+
+  for (let index = 0; index < totalChunks; index++) {
+    const blob = asFile.slice(index * CHUNK_SIZE, Math.min((index + 1) * CHUNK_SIZE, asFile.size));
+    const fd = new FormData();
+    fd.append("kind", "video");
+    fd.append("uploadId", uploadId);
+    fd.append("chunkIndex", String(index));
+    fd.append("totalChunks", String(totalChunks));
+    fd.append("file", blob, `${uploadId}.part${index}`);
+    const chunkResponse = await xhrSend<T & { received?: number }>(fd, (percent) => {
+      const overall = ((uploadedBytes + (percent / 100) * blob.size) / asFile.size) * 100;
+      onProgress(Math.min(99, Math.round(overall)));
+    });
+    uploadedBytes += blob.size;
+    if (index === totalChunks - 1) result = chunkResponse;
+  }
+
+  if (!result) throw new Error("Upload did not finish — please retry.");
+  onProgress(100);
+  return result;
 }
 
 /** Grab a poster frame + duration from a video file, fully client-side. */
