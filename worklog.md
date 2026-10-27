@@ -318,3 +318,20 @@ Stage Summary:
 - Admin panel is now login-only: exactly one built-in OWNER account (nexora@studio.com / Vahora@05?), no sign-up UI, no setup API. Credential rotation stays available in Settings → Account and survives restarts.
 - Security posture: fail-secure AUTH_SECRET handling, timing-equalized login, dual rate-limit buckets, magic-byte upload sniffing everywhere, hardened headers + no-store APIs. Known documented limits: in-memory rate limiter is per-process; no CSP/X-Frame-Options by design (preview iframe); SQLite file + public/uploads need persistent disk in production.
 - SEO is now admin-managed end-to-end: metadata API + OG/Twitter + canonical + robots + sitemap + manifest + JSON-LD @graph all follow Settings → SEO; SEO health checklist guides the owner to launch-ready state (currently 4/6 green; title 63 chars and empty GSC code are the amber items).
+
+---
+Task ID: 13
+Agent: Z.ai Code (main)
+Task: Fix gallery "Upload failed (405)" reported via admin Add-video dialog screenshot (CoverAds.mp4).
+
+Work Log:
+- Root cause: POST /api/admin/gallery/upload had NO route file — the request fell through to the dynamic route /api/admin/gallery/[id] with id="upload", which exports only GET/PATCH/DELETE → Next.js answered 405 Method Not Allowed. Client (gallery.tsx), validation docs and storage re-validation all referenced the missing endpoint (likely lost in a previous session).
+- Created src/app/api/admin/gallery/upload/route.ts: admin guard (session + x-nexora-admin CSRF header), FormData kind=video|photo|poster, size pre-check before buffering (150MB video / 12MB photo/poster), magic-byte content sniffing via validateUploadContent (declared MIME/filename never trusted), server-generated UUID filenames into public/uploads/gallery/{videos,photos,posters}, sharp webp thumbnail (≤640w, EXIF-rotated) + width/height for photos, graceful thumb-failure fallback.
+- API tests (curl, owner session): unauth 401, no-CSRF 403, bad kind 400, text-as-video 415, video/photo/poster 201 with correct /uploads/gallery/... refs; full record lifecycle POST /api/admin/gallery → DELETE with file GC confirmed.
+- Browser E2E (agent-browser): login (nexora@studio.com) → Gallery → Add video → real ffmpeg-generated MP4 upload → poster auto-captured, preview rendered, title auto-filled, no page errors/console warnings → saved as published → public #/gallery shows VIDEOS 1 → test record deleted via API, storage dirs left empty.
+- lint + tsc (src) clean; dev.log clean.
+
+Stage Summary:
+- Gallery upload flow fully restored: Add video / Add photo now upload, preview, save, publish and publicly render; 405 eliminated at the root (dedicated upload route) rather than worked around.
+- Upload route hardening preserved: only admin sessions, CSRF header, byte-level type sniffing, UUID storage names, size caps — consistent with the Task 12 security posture.
+- Re-confirmed from Task 12: login-only admin (no sign-up anywhere), single OWNER account nexora@studio.com, SEO facility + settings sections all live.
