@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { SiteProvider } from "@/components/site/site-context";
 import { Nav } from "@/components/site/nav";
 import { Footer } from "@/components/site/footer";
+import { ScrollProgress } from "@/components/site/primitives";
 import { HomeView } from "@/components/site/views/home";
 import { useRoute } from "@/lib/router";
 import { api } from "@/lib/api-client";
@@ -201,6 +202,7 @@ export function SiteShell({ initial }: { initial: SiteData }) {
   return (
     <SiteProvider data={content}>
       <div className="flex min-h-screen flex-col bg-ink text-ivory">
+        <ScrollProgress />
         <Nav />
         <main className="flex-1">
           <AnimatePresence mode="wait" initial={false}>

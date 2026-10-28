@@ -90,6 +90,9 @@
   }
   html {
     scroll-behavior: smooth;
+    /* keeps framer-motion's target-based useScroll measurements quiet —
+       the dev-only "non-static position" warning fires while <html> is static */
+    position: relative;
   }
   @media (prefers-reduced-motion: reduce) {
     html {
@@ -210,6 +213,58 @@
     }
     50% {
       box-shadow: 0 0 0 6px rgba(198, 255, 58, 0);
+    }
+  }
+
+  /* ---- scroll-motion atmosphere (premium hero + section strips) ---- */
+
+  /* aurora blobs — slow cinematic drift behind the hero */
+  @keyframes aurora-a {
+    0%,
+    100% {
+      transform: translate3d(-3%, -2%, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(6%, 7%, 0) scale(1.14);
+    }
+  }
+  @keyframes aurora-b {
+    0%,
+    100% {
+      transform: translate3d(4%, 3%, 0) scale(1.06);
+    }
+    50% {
+      transform: translate3d(-7%, -6%, 0) scale(0.9);
+    }
+  }
+  .animate-aurora-a {
+    animation: aurora-a 24s ease-in-out infinite;
+  }
+  .animate-aurora-b {
+    animation: aurora-b 30s ease-in-out infinite;
+  }
+
+  /* slow continuous rotation (hero orbit badge) */
+  @keyframes spin-slow {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .animate-spin-slow {
+    animation: spin-slow 18s linear infinite;
+  }
+
+  /* outlined display text (scroll-linked background strips) */
+  .text-outline {
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(242, 239, 231, 0.13);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-aurora-a,
+    .animate-aurora-b,
+    .animate-spin-slow {
+      animation: none;
     }
   }
 

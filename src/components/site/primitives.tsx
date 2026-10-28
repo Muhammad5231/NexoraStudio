@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { motion, useInView, useMotionValue, useSpring, useScroll, useTransform, useReducedMotion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  motion,
+  useInView,
+  useMotionValue,
+  useSpring,
+  useScroll,
+  useTransform,
+  useReducedMotion,
+  type MotionValue,
+} from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "@/lib/router";
+import { useSite } from "@/components/site/site-context";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -14,31 +24,218 @@ import { cn } from "@/lib/utils";
 export const EASE = [0.22, 1, 0.36, 1] as const;
 
 /* ------------------------------------------------------------------ Reveal */
+
+export type RevealVariant = "up" | "blur" | "scale" | "left" | "right";
+
+const REVEAL_VARIANTS: Record<RevealVariant, { opacity: number; y?: number; x?: number; scale?: number; filter?: string }> = {
+  up: { opacity: 0, y: 28 },
+  blur: { opacity: 0, y: 18, filter: "blur(9px)" },
+  scale: { opacity: 0, y: 16, scale: 0.94 },
+  left: { opacity: 0, x: -40 },
+  right: { opacity: 0, x: 40 },
+};
+
 export function Reveal({
   children,
   delay = 0,
   y = 28,
   className,
   once = true,
+  variant = "up",
 }: {
   children: ReactNode;
   delay?: number;
   y?: number;
   className?: string;
   once?: boolean;
+  variant?: RevealVariant;
 }) {
   const reduce = useReducedMotion();
   if (reduce) return <div className={className}>{children}</div>;
+  const from = variant === "up" ? { opacity: 0, y } : REVEAL_VARIANTS[variant];
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={from}
+      whileInView={{ opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }}
       viewport={{ once, margin: "-60px" }}
-      transition={{ duration: 0.7, delay, ease: EASE }}
+      transition={{ duration: 0.75, delay, ease: EASE }}
     >
       {children}
     </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------- WordsReveal */
+/**
+ * Word-by-word masked reveal driven by scroll position — each word slides up
+ * out of its own overflow mask as the text enters the viewport.
+ */
+export function WordsReveal({
+  text,
+  className,
+  wordClassName,
+  delay = 0,
+  stagger = 0.05,
+  once = true,
+}: {
+  text: string;
+  className?: string;
+  wordClassName?: string;
+  delay?: number;
+  stagger?: number;
+  once?: boolean;
+}) {
+  const reduce = useReducedMotion();
+  const ref = useRef<HTMLSpanElement>(null);
+  // observe the un-clipped container — masked inner spans are fully clipped
+  // by their overflow-hidden parents, so observing them directly can miss the
+  // "already in view at mount" case (e.g. hash-navigating to a new view)
+  const inView = useInView(ref, { once, margin: "-40px" });
+  const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
+
+  if (reduce) return <span className={className}>{text}</span>;
+
+  return (
+    <span ref={ref} className={className}>
+      {words.map((word, i) => (
+        <span
+          key={`${word}-${i}`}
+          className="inline-block overflow-hidden pb-[0.12em] -mb-[0.12em] align-bottom"
+        >
+          <motion.span
+            className={cn("inline-block will-change-transform", wordClassName)}
+            initial={{ y: "115%" }}
+            animate={inView ? { y: "0%" } : undefined}
+            transition={{ duration: 0.75, delay: delay + i * stagger, ease: EASE }}
+          >
+            {word}
+            {i < words.length - 1 ? "\u00A0" : ""}
+          </motion.span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/* ---------------------------------------------------------- ScrollTextFill */
+/**
+ * Manifesto-style fill: words start dim and ink themselves in one by one as
+ * the paragraph travels up the viewport (scroll-linked, not time-based).
+ */
+export function ScrollTextFill({ text, className }: { text: string; className?: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 0.92", "end 0.55"] });
+  const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
+
+  return (
+    <p ref={ref} className={cn("relative", className)}>
+      {words.map((word, i) => (
+        <FillWord
+          key={`${word}-${i}`}
+          progress={scrollYProgress}
+          range={[i / words.length, Math.min(1, (i + 1.6) / words.length)]}
+          dim={reduce === true}
+        >
+          {word}
+        </FillWord>
+      ))}
+    </p>
+  );
+}
+
+function FillWord({
+  progress,
+  range,
+  dim,
+  children,
+}: {
+  progress: MotionValue<number>;
+  range: [number, number];
+  dim: boolean;
+  children: string;
+}) {
+  const opacity = useTransform(progress, range, dim ? [1, 1] : [0.14, 1]);
+  return (
+    <motion.span style={{ opacity }} className="mr-[0.26em] inline-block">
+      {children}
+    </motion.span>
+  );
+}
+
+/* --------------------------------------------------------------- ScrollZoom */
+/**
+ * Cinematic media reveal — content starts slightly zoomed-in / pushed down
+ * inside an overflow mask and settles to rest as it enters the viewport.
+ */
+export function ScrollZoom({
+  children,
+  className,
+  zoom = 1.14,
+}: {
+  children: ReactNode;
+  className?: string;
+  zoom?: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "start 0.3"] });
+  const scale = useTransform(scrollYProgress, [0, 1], reduce ? [1, 1] : [zoom, 1]);
+  const y = useTransform(scrollYProgress, [0, 1], reduce ? [0, 0] : [26, 0]);
+
+  return (
+    <div ref={ref} className={cn("relative overflow-hidden", className)}>
+      <motion.div style={{ scale, y }} className="h-full w-full will-change-transform">
+        {children}
+      </motion.div>
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- ScrollStrip */
+/**
+ * Giant outlined display text that drifts horizontally, driven by the
+ * page scroll. Purely decorative (aria-hidden).
+ */
+export function ScrollStrip({
+  text,
+  className,
+  reverse = false,
+}: {
+  text: string;
+  className?: string;
+  reverse?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
+  const x = useTransform(scrollYProgress, [0, 1], reduce ? ["0%", "0%"] : reverse ? ["-14%", "0%"] : ["0%", "-14%"]);
+  const phrase = useMemo(() => Array(4).fill(text).join("\u00A0\u00A0\u00A0"), [text]);
+
+  return (
+    <div ref={ref} aria-hidden="true" className={cn("pointer-events-none select-none overflow-hidden", className)}>
+      <motion.div style={{ x }} className="text-outline whitespace-nowrap font-display font-bold leading-none tracking-tight">
+        {phrase}
+      </motion.div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ ScrollProgress */
+/** Scroll-linked progress bar pinned to the top of the viewport. */
+export function ScrollProgress() {
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, { stiffness: 140, damping: 26, mass: 0.4 });
+
+  if (reduce) return null;
+  return (
+    <motion.div
+      aria-hidden="true"
+      className="fixed inset-x-0 top-0 z-[80] h-0.5 origin-left bg-volt shadow-[0_0_14px_rgba(198,255,58,0.55)]"
+      style={{ scaleX }}
+    />
   );
 }
 
@@ -108,9 +305,13 @@ export function SectionHead({
           {kicker}
         </p>
       </Reveal>
-      <Reveal delay={0.08}>
-        <h2 className={cn("display-2 mt-5", dark ? "text-ivory" : "text-ink")}>{title}</h2>
-      </Reveal>
+      <h2 className={cn("display-2 mt-5", dark ? "text-ivory" : "text-ink")}>
+        {typeof title === "string" ? (
+          <WordsReveal text={title} />
+        ) : (
+          <Reveal delay={0.08}>{title}</Reveal>
+        )}
+      </h2>
       {body ? (
         <Reveal delay={0.16}>
           <p className={cn("mt-5 max-w-xl text-base leading-relaxed sm:text-lg", dark ? "text-smoke" : "text-graphite", align === "center" && "mx-auto")}>
@@ -368,9 +569,17 @@ export function CTABanner({
   buttonLabel: string;
   whatsappHref?: string;
 }) {
+  const { settings } = useSite();
+  const brand = (settings.brand.name || "Nexora").toUpperCase();
+
   return (
     <section className="grain relative overflow-hidden bg-ink py-24 sm:py-32">
       <div className="bg-grid-dark absolute inset-0" aria-hidden="true" />
+      {/* scroll-linked brand watermark drifting behind the copy */}
+      <ScrollStrip
+        text={brand}
+        className="absolute left-0 top-1/2 w-full -translate-y-1/2 text-[17vw] opacity-80"
+      />
       <div className="absolute -right-40 top-1/2 h-[480px] w-[480px] -translate-y-1/2 rounded-full bg-volt/10 blur-[140px]" aria-hidden="true" />
       <div className="container-x relative z-10">
         <div className="flex flex-col items-start gap-10 lg:flex-row lg:items-end lg:justify-between">
@@ -425,7 +634,11 @@ export function PageHeader({
             {kicker}
           </p>
         </Reveal>
-        <StaggeredLines className="mt-6" lines={[title]} lineClassName="display-1 text-ivory max-w-4xl" />
+        {typeof title === "string" ? (
+          <WordsReveal text={title} className="display-1 mt-6 block text-ivory max-w-4xl" stagger={0.07} />
+        ) : (
+          <StaggeredLines className="mt-6" lines={[title]} lineClassName="display-1 text-ivory max-w-4xl" />
+        )}
         {sub ? (
           <Reveal delay={0.2}>
             <p className="mt-7 max-w-2xl text-base leading-relaxed text-smoke sm:text-lg">{sub}</p>

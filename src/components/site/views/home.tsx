@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment, useEffect, useMemo, useRef } from "react";
 import { motion, useMotionValue, useSpring, useScroll, useTransform, useReducedMotion } from "framer-motion";
 import { ArrowRight, ArrowUpRight, Check, Play, Plus } from "lucide-react";
 import {
@@ -19,9 +20,11 @@ import {
   MediaFrame,
   Magnetic,
   Reveal,
+  ScrollTextFill,
+  ScrollZoom,
   SectionHead,
-  StaggeredLines,
   VoltButton,
+  WordsReveal,
 } from "@/components/site/primitives";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +63,103 @@ export function HomeView() {
   );
 }
 
+/* ------------------------------------------------------ hero motion helpers */
+
+/** One masked word of the hero title — slides up with a slight rotate. */
+function HeroWord({
+  children,
+  delay,
+  className,
+  underline = false,
+}: {
+  children: string;
+  delay: number;
+  className?: string;
+  underline?: boolean;
+}) {
+  return (
+    <span className="inline-block overflow-hidden pb-[0.1em] -mb-[0.1em] align-bottom">
+      <motion.span
+        className={cn("relative inline-block will-change-transform", className)}
+        initial={{ y: "112%", rotate: 3 }}
+        animate={{ y: "0%", rotate: 0 }}
+        transition={{ duration: 0.85, delay, ease: EASE }}
+      >
+        {children}
+        {underline ? (
+          <motion.span
+            aria-hidden="true"
+            className="absolute inset-x-0 -bottom-[0.05em] h-[0.055em] origin-left bg-volt"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 0.7, delay: delay + 0.35, ease: EASE }}
+          />
+        ) : null}
+      </motion.span>
+    </span>
+  );
+}
+
+/** Cursor-following volt glow — fine pointers only, purely decorative. */
+function Spotlight() {
+  const reduce = useReducedMotion();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const primed = useRef(false);
+  const x = useMotionValue(-900);
+  const y = useMotionValue(-900);
+  const sx = useSpring(x, { stiffness: 55, damping: 20, mass: 0.6 });
+  const sy = useSpring(y, { stiffness: 55, damping: 20, mass: 0.6 });
+
+  useEffect(() => {
+    if (reduce || typeof window === "undefined") return;
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    const onMove = (e: MouseEvent) => {
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      if (!primed.current) {
+        // first move: snap to the cursor so the glow doesn't fly across the hero
+        primed.current = true;
+        sx.jump(px);
+        sy.jump(py);
+        return;
+      }
+      x.set(px);
+      y.set(py);
+    };
+    window.addEventListener("mousemove", onMove, { passive: true });
+    return () => window.removeEventListener("mousemove", onMove);
+  }, [reduce, x, y, sx, sy]);
+
+  return (
+    <div ref={wrapRef} aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] overflow-hidden">
+      <motion.div style={{ x: sx, y: sy }} className="absolute left-0 top-0 will-change-transform">
+        <div className="h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(198,255,58,0.07)_0%,rgba(198,255,58,0.02)_38%,transparent_68%)]" />
+      </motion.div>
+    </div>
+  );
+}
+
+/** Slowly rotating circular caption around the hero media stack. */
+function OrbitBadge({ className }: { className?: string }) {
+  return (
+    <div className={cn("pointer-events-none hidden lg:block", className)} aria-hidden="true">
+      <div className="relative h-28 w-28">
+        <svg viewBox="0 0 100 100" className="animate-spin-slow h-full w-full">
+          <defs>
+            <path id="hero-orbit" d="M 50,50 m -38,0 a 38,38 0 1,1 76,0 a 38,38 0 1,1 -76,0" fill="none" />
+          </defs>
+          <text className="fill-ivory/55 font-display" style={{ fontSize: "8px", letterSpacing: "0.24em" }}>
+            <textPath href="#hero-orbit">WEBSITES · VIDEO · GROWTH · NEXORA ·</textPath>
+          </text>
+        </svg>
+        <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-volt shadow-[0_0_12px_rgba(198,255,58,0.8)]" />
+      </div>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------- HERO */
 
 function Hero() {
@@ -73,6 +173,11 @@ function Hero() {
     .map((p) => p.trim())
     .filter(Boolean);
 
+  // kinetic title — admin-managed lines split into words for the masked reveal
+  const line1Words = useMemo(() => h.heroTitleLine1.split(/\s+/).filter(Boolean), [h.heroTitleLine1]);
+  const line2Words = useMemo(() => h.heroTitleLine2.split(/\s+/).filter(Boolean), [h.heroTitleLine2]);
+  const accentWord = h.heroTitleAccent.trim();
+
   // mouse parallax for the media stack (desktop only)
   const mx = useMotionValue(0);
   const my = useMotionValue(0);
@@ -80,10 +185,16 @@ function Hero() {
   const sy = useSpring(my, { stiffness: 60, damping: 18 });
 
   const { scrollYProgress } = useScroll();
-  const heroY = useTransform(scrollYProgress, [0, 0.3], [0, reduce ? 0 : -60]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.25], [1, reduce ? 1 : 0.4]);
+  const heroY = useTransform(scrollYProgress, [0, 0.3], [0, reduce ? 0 : -70]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.28], [1, reduce ? 1 : 0.35]);
+  const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, reduce ? 1 : 0.965]);
   const sxInvert = useTransform(sx, (v) => -v * 0.55);
   const syInvert = useTransform(sy, (v) => -v * 0.55);
+
+  // word choreography timeline
+  const WORD_STAGGER = 0.055;
+  const t1 = 0.15;
+  const t2 = t1 + line1Words.length * WORD_STAGGER + 0.1;
 
   return (
     <section
@@ -103,40 +214,66 @@ function Hero() {
         }}
         aria-hidden="true"
       />
-      <div className="absolute -top-32 right-[-6%] h-[620px] w-[620px] rounded-full bg-volt/[0.08] blur-[160px]" aria-hidden="true" />
-      <div className="absolute bottom-0 left-[-10%] h-[300px] w-[400px] rounded-full bg-volt/[0.05] blur-[120px]" aria-hidden="true" />
+      {/* aurora backdrop — slow-drifting volt & ivory light fields */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+        <div className="animate-aurora-a absolute -top-[22%] left-[4%] h-[520px] w-[680px] rounded-full bg-volt/[0.07] blur-[130px]" />
+        <div className="animate-aurora-b absolute -bottom-[28%] right-[-8%] h-[520px] w-[560px] rounded-full bg-ivory/[0.05] blur-[150px]" />
+      </div>
 
-      <motion.div style={reduce ? undefined : { y: heroY, opacity: heroOpacity }} className="container-x relative z-10 flex flex-1 flex-col">
+      {/* cursor spotlight — follows the pointer on fine-pointer devices */}
+      <Spotlight />
+
+      <motion.div
+        style={reduce ? undefined : { y: heroY, opacity: heroOpacity, scale: heroScale }}
+        className="container-x relative z-10 flex flex-1 flex-col"
+      >
         <div className="grid flex-1 items-center gap-14 lg:grid-cols-12 lg:gap-8">
           {/* copy */}
           <div className="lg:col-span-7">
-            <motion.p
+            <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: EASE }}
-              className="kicker inline-flex items-center gap-2.5 text-ivory/60"
+              className="inline-flex items-center gap-2.5 rounded-full border border-ivory/15 bg-coal/70 px-4 py-2.5 backdrop-blur-sm"
             >
               <span className="animate-pulse-dot inline-block h-2 w-2 rounded-full bg-volt" aria-hidden="true" />
-              {h.heroKicker}
-            </motion.p>
+              <span className="kicker text-ivory/75">{h.heroKicker}</span>
+            </motion.div>
 
-            <h1 className="mt-7">
-              <StaggeredLines
-                delay={0.1}
-                lines={[
-                  <span
-                    key="l1"
-                    className="block bg-gradient-to-b from-ivory via-ivory to-ivory/60 bg-clip-text text-transparent"
+            <h1 className="mt-8">
+              <span className="sr-only">
+                {h.heroTitleLine1} {h.heroTitleLine2} {h.heroTitleAccent}
+              </span>
+              <span aria-hidden="true" className="block">
+                <span className="display-1 hero-display block">
+                  {line1Words.map((word, i) => (
+                    <Fragment key={i}>
+                      <HeroWord
+                        delay={t1 + i * WORD_STAGGER}
+                        className="bg-gradient-to-b from-ivory via-ivory to-ivory/60 bg-clip-text text-transparent"
+                      >
+                        {word}
+                      </HeroWord>
+                      {i < line1Words.length - 1 ? " " : null}
+                    </Fragment>
+                  ))}
+                </span>
+                <span className="display-1 hero-display mt-1 block text-ivory sm:mt-2">
+                  {line2Words.map((word, i) => (
+                    <Fragment key={i}>
+                      <HeroWord delay={t2 + i * WORD_STAGGER}>{word}</HeroWord>
+                      {" "}
+                    </Fragment>
+                  ))}
+                  <HeroWord
+                    delay={t2 + line2Words.length * WORD_STAGGER + 0.05}
+                    className="text-volt"
+                    underline
                   >
-                    {h.heroTitleLine1}
-                  </span>,
-                  <span key="l2" className="block text-ivory">
-                    {h.heroTitleLine2}{" "}
-                    <span className="text-volt">{h.heroTitleAccent}</span>
-                  </span>,
-                ]}
-                lineClassName="display-1 hero-display"
-              />
+                    {accentWord}
+                  </HeroWord>
+                </span>
+              </span>
             </h1>
 
             <motion.p
@@ -211,6 +348,14 @@ function Hero() {
                       <span className="h-1 w-14 rounded-full bg-ivory/25" />
                     </span>
                   </div>
+                  {/* premium shine sweep on load */}
+                  <motion.span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-0 w-1/3 -skew-x-12 bg-gradient-to-r from-transparent via-ivory/[0.09] to-transparent"
+                    initial={{ x: "-160%" }}
+                    animate={{ x: "420%" }}
+                    transition={{ duration: 1.5, delay: 1.05, ease: "easeInOut" }}
+                  />
                   {/* cinematic blend into the ink backdrop */}
                   <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-ink/85 via-ink/25 to-transparent" />
                   <div aria-hidden="true" className="pointer-events-none absolute inset-0 shadow-[inset_0_0_90px_rgba(11,11,12,0.4)]" />
@@ -245,6 +390,9 @@ function Hero() {
                   Available for projects
                 </span>
               </div>
+
+              {/* rotating orbit badge */}
+              <OrbitBadge className="absolute -bottom-14 -right-6 z-10" />
             </motion.div>
           </motion.div>
         </div>
@@ -254,17 +402,17 @@ function Hero() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.2, duration: 0.8 }}
-          className="hidden items-center gap-3 pt-10 lg:flex"
+          className="hidden items-center gap-4 pt-10 lg:flex"
           aria-hidden="true"
         >
-          <span className="font-display text-[10px] uppercase tracking-[0.25em] text-ivory/40">Scroll</span>
-          <span className="relative h-px w-20 overflow-hidden bg-ivory/15">
+          <span className="relative flex h-10 w-6 items-start justify-center rounded-full border border-ivory/25 p-2">
             <motion.span
-              className="absolute inset-y-0 left-0 w-1/2 bg-volt"
-              animate={reduce ? undefined : { x: [0, 80] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+              className="h-1.5 w-1.5 rounded-full bg-volt"
+              animate={reduce ? undefined : { y: [0, 12, 0], opacity: [1, 0.35, 1] }}
+              transition={{ duration: 1.9, repeat: Infinity, ease: "easeInOut" }}
             />
           </span>
+          <span className="font-display text-[10px] uppercase tracking-[0.25em] text-ivory/40">Scroll to explore</span>
         </motion.div>
       </motion.div>
     </section>
@@ -288,20 +436,21 @@ function IntroSection() {
                 {h.introKicker}
               </p>
             </Reveal>
-            <Reveal delay={0.08}>
-              <h2 className="display-2 mt-5 max-w-2xl">{h.introTitle}</h2>
-            </Reveal>
+            <h2 className="display-2 mt-5 max-w-2xl">
+              <WordsReveal text={h.introTitle} />
+            </h2>
           </div>
           <div className="flex flex-col justify-end lg:col-span-5">
-            <Reveal delay={0.14}>
-              <p className="text-base leading-relaxed text-graphite sm:text-lg">{h.introBody}</p>
-            </Reveal>
+            <ScrollTextFill
+              text={h.introBody}
+              className="text-lg leading-relaxed text-graphite sm:text-xl"
+            />
           </div>
         </div>
 
         <div className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-ink/10 bg-ink/10 sm:grid-cols-3">
           {h.introPoints.map((point, i) => (
-            <Reveal key={i} delay={0.1 + i * 0.08} className="h-full">
+            <Reveal key={i} delay={0.1 + i * 0.08} variant="blur" className="h-full">
               <div className="flex h-full flex-col gap-4 bg-ivory p-7">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-ink">
                   <Check className="h-4 w-4 text-volt" aria-hidden="true" />
@@ -351,6 +500,7 @@ function WorkSection({ projects }: { projects: ReturnType<typeof useSite>["proje
           {projects.map((project, i) => (
             <Reveal key={project.id} delay={0.06 * i} className={cn("lg:col-span-6", spans[i % spans.length])}>
               <Link href={`/work/${project.slug}`} className="group block" ariaLabel={`View case study: ${project.title}`}>
+                <ScrollZoom className="rounded-2xl">
                 <MediaFrame src={project.coverImage || "/media/hero-main.png"} alt={`${project.title} — ${project.category}`} ratio={ratios[i % ratios.length]} className="rounded-2xl border border-ivory/10">
                   <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" aria-hidden="true" />
                   <span className="absolute right-4 top-4 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-volt opacity-0 transition-all duration-500 group-hover:translate-y-0 group-hover:opacity-100">
@@ -362,6 +512,7 @@ function WorkSection({ projects }: { projects: ReturnType<typeof useSite>["proje
                     </span>
                   ) : null}
                 </MediaFrame>
+                </ScrollZoom>
                 <div className="mt-5 flex items-start justify-between gap-4">
                   <div>
                     <h3 className="font-display text-xl font-bold tracking-tight text-ivory transition-colors group-hover:text-volt sm:text-2xl">
@@ -449,12 +600,14 @@ function VideoSection({ services }: { services: ReturnType<typeof useSite>["serv
         <div className="order-2 lg:order-1 lg:col-span-5">
           <Reveal>
             <div className="relative mx-auto max-w-[340px] sm:max-w-[380px]">
-              <MediaFrame
-                src={heroMediaSecondary}
-                alt="Short-form video editing work"
-                ratio="9/16"
-                className="rounded-3xl border border-ivory/12"
-              />
+              <ScrollZoom className="rounded-3xl" zoom={1.1}>
+                <MediaFrame
+                  src={heroMediaSecondary}
+                  alt="Short-form video editing work"
+                  ratio="9/16"
+                  className="rounded-3xl border border-ivory/12"
+                />
+              </ScrollZoom>
               {/* timeline strip */}
               <div className="absolute inset-x-4 bottom-4 overflow-hidden rounded-xl border border-ivory/15 bg-ink/80 p-3 backdrop-blur-md" aria-hidden="true">
                 <div className="flex items-center gap-1.5">
@@ -543,7 +696,7 @@ function PackageSection() {
               </Reveal>
               <ul className="mt-7 space-y-4">
                 {h.packageFeatures.map((feature, i) => (
-                  <Reveal key={i} delay={0.06 * i}>
+                  <Reveal key={i} delay={0.06 * i} variant="blur">
                     <li className="flex items-start gap-3.5">
                       <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-volt/15">
                         <Check className="h-3.5 w-3.5 text-volt" aria-hidden="true" />
@@ -566,17 +719,29 @@ function PackageSection() {
 function ProcessSection() {
   const { settings } = useSite();
   const h = settings.home;
+  const lineRef = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: lineRef, offset: ["start 0.85", "end 0.55"] });
+  const lineScale = useSpring(scrollYProgress, { stiffness: 90, damping: 22 });
 
   return (
     <section className="bg-ink py-20 sm:py-28">
       <div className="container-x">
         <SectionHead kicker={h.processKicker} title={h.processTitle} align="center" />
 
-        <div className="relative mt-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
-          {/* connecting line (desktop) */}
+        <div ref={lineRef} className="relative mt-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+          {/* connecting line (desktop) — base track */}
           <div className="absolute left-0 right-0 top-7 hidden h-px bg-ivory/10 lg:block" aria-hidden="true" />
+          {/* volt progress line — draws itself across the steps as you scroll */}
+          {reduce ? null : (
+            <motion.div
+              style={{ scaleX: lineScale }}
+              className="absolute left-0 right-0 top-7 hidden h-px origin-left bg-gradient-to-r from-volt via-volt/70 to-volt/15 lg:block"
+              aria-hidden="true"
+            />
+          )}
           {h.processSteps.map((step, i) => (
-            <Reveal key={i} delay={0.08 * i}>
+            <Reveal key={i} delay={0.08 * i} variant="blur">
               <div className="relative">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full border border-volt/30 bg-ink font-display text-lg font-bold text-volt">
                   {step.step}
@@ -592,7 +757,7 @@ function ProcessSection() {
         <div className="mt-20 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-ivory/10 bg-ivory/10 lg:grid-cols-4">
           {h.stats.map((stat, i) => (
             <div key={i} className="bg-ink-2 p-7 sm:p-9">
-              <Reveal delay={0.05 * i}>
+              <Reveal delay={0.05 * i} variant="scale">
                 <p className="font-display text-4xl font-bold tracking-tight text-volt sm:text-5xl">
                   <Counter value={stat.value} suffix={stat.suffix} />
                 </p>
@@ -640,7 +805,7 @@ function TestimonialSection({ hasTestimonials }: { hasTestimonials: boolean }) {
         <SectionHead kicker="Kind Words" title="What clients say." align="center" />
         <div className="mt-14 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {testimonials.map((t, i) => (
-            <Reveal key={t.id} delay={0.06 * i}>
+            <Reveal key={t.id} delay={0.06 * i} variant="blur">
               <figure className="flex h-full flex-col rounded-2xl border border-ivory/10 bg-coal p-7">
                 <div className="flex gap-1" role="img" aria-label={`${t.rating} out of 5`}>
                   {Array.from({ length: t.rating }).map((_, j) => (
