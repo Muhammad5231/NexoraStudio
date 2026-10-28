@@ -373,3 +373,21 @@ Stage Summary:
 - Gallery video upload now survives gateway body-size limits end to end; photos/posters keep the single-request path. This was the real remaining blocker behind the "Save video" greyed-out state.
 - Dev-server lifecycle documented: watchdog cron holds it in foreground ~9 min per tick; background daemons are reaped by the sandbox between tool calls.
 - Hydration report re-verified as dev-only artifact (Task 11 conclusion unchanged); hard reload clears it.
+
+---
+Task ID: 15
+Agent: Z.ai Code (main)
+Task: User-reported "Upload failed (405)" on Add video + "very low speed upload from local computer".
+
+Work Log:
+- Root cause (405): src/app/api/admin/gallery/upload/route.ts was DELETED from the working tree again (git status showed " D"; gallery/ dir mtime 13:50 — same failure mode as Task 13; external sync/commit process around that time). POST /api/admin/gallery/upload therefore fell into the [id] dynamic route (GET/PATCH/DELETE only) → 405 Method Not Allowed. Restored verbatim from git HEAD (`git restore`), which already contained the full Task 13 chunked-upload implementation.
+- Speed root cause: client uploaded videos as SEQUENTIAL 4 MB chunks — with high latency between the admin's browser and the sandbox, every chunk paid a full round-trip before the next started (latency-bound, not bandwidth-bound).
+- Client fix (gallery.tsx): CHUNK_SIZE 4 MB → 8 MB (halves round-trips; Caddyfile has no body cap, verified) + CHUNK_CONCURRENCY=3 parallel in-flight chunks via a shared cursor; per-chunk confirmed-bytes array drives one smooth aggregate progress bar (capped at 99 until the end). Correctness invariant kept: the FINAL-index chunk is always sent last and alone, so the server's assemble-on-last-index logic never fires with missing parts (its 409+cleanup path stays valid). No call-site changes — uploadWithProgress signature untouched.
+- Server fix (route.ts): CHUNK_SIZE mirrored to 8 MB; MAX_CHUNKS 48 → 24 (24 × 8 MB = 192 MB ≥ 150 MB cap); comment documents the final-chunk-last protocol.
+- Verification: curl no-auth POST → 401 (route matches; 405 gone). Curl login → 3-chunk upload (8-byte chunks of a 30-byte ftyp-magic file) → 200/200/201, reassembled file BYTE-IDENTICAL (cmp), .tmp auto-cleaned, test file removed. Browser E2E: fresh session → /#/admin login → Gallery → Add video → uploaded a real 13.2 MB VP8/WebM (ffmpeg-generated) → toast "Upload complete", client-side poster captured, preview player live, record saved (VIDEOS 1). Network trail: poster 201 → video chunk 200 (intermediate) → chunk 201 (final) → media 206 range-streaming. Test record deleted via API, media files removed, public gallery API back to empty.
+- lint clean; dev.log clean through all of the above.
+
+Stage Summary:
+- 405 was the Task 13 bug resurrected by the upload route file being wiped from the working tree; restored from git and re-verified end to end. If it reappears, check `git status` for " D src/app/api/admin/gallery/upload/route.ts" first.
+- Video uploads from the admin's local machine are now ~6× more latency-tolerant (8 MB chunks × 3 parallel): throughput no longer serializes on per-chunk round-trips. Real-world speed is still bounded by the admin's own uplink to the sandbox.
+- Client CHUNK_SIZE and server CHUNK_SIZE must stay in sync (both 8 MB) — they are deliberately mirrored constants with cross-referencing comments.

@@ -27,10 +27,13 @@ const THUMB_MAX_WIDTH = 640;
 const THUMB_QUALITY = 78;
 
 // Chunked video uploads: reverse proxies / preview gateways often cap request
-// body size, so large videos are sent as a series of ≤4 MB chunks that the
-// server reassembles. Mirrors the client's CHUNK_SIZE in gallery.tsx.
-const CHUNK_SIZE = 4 * 1024 * 1024;
-const MAX_CHUNKS = 48; // 48 × 4 MB = 192 MB ≥ the 150 MB video cap
+// body size, so large videos are sent as a series of ≤8 MB chunks that the
+// server reassembles. Mirrors the client's CHUNK_SIZE in gallery.tsx (the
+// client sends chunks with limited parallelism and always delivers the
+// last-index chunk last, so assembly below only ever fires when all parts
+// are already on disk).
+const CHUNK_SIZE = 8 * 1024 * 1024;
+const MAX_CHUNKS = 24; // 24 × 8 MB = 192 MB ≥ the 150 MB video cap
 const UPLOAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function tmpRoot(): string {

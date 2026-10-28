@@ -46,10 +46,15 @@ function formatDuration(sec: number): string | null {
 }
 
 /* ------------------------------------------------------------- upload helper */
-// Large videos are sent as sequential ≤4 MB chunks (reassembled server-side) —
-// preview gateways and reverse proxies commonly reject single huge POST bodies.
+// Large videos are sent as ≤8 MB chunks (reassembled server-side) — preview
+// gateways and reverse proxies commonly reject single huge POST bodies.
+// Chunks fly with limited parallelism (3 in flight) so a high-latency
+// connection between the admin's browser and the server doesn't serialize
+// every round-trip. The final chunk is always sent LAST and ALONE: the server
+// assembles (and cleans up) the moment the last-index chunk lands.
 // Mirrors CHUNK_SIZE in src/app/api/admin/gallery/upload/route.ts.
-const CHUNK_SIZE = 4 * 1024 * 1024;
+const CHUNK_SIZE = 8 * 1024 * 1024;
+const CHUNK_CONCURRENCY = 3;
 
 function xhrSend<T>(fd: FormData, onProgress: (percent: number) => void): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -87,13 +92,26 @@ async function uploadWithProgress<T>(
     return xhrSend<T>(fd, onProgress);
   }
 
-  // Chunked video upload: sequential parts, aggregated progress.
+  // Chunked video upload: parallel window over all but the final chunk, then
+  // the final chunk alone (its arrival triggers server-side reassembly).
   const uploadId = crypto.randomUUID();
   const totalChunks = Math.ceil(asFile.size / CHUNK_SIZE);
-  let uploadedBytes = 0;
-  let result: T | null = null;
+  const lastIndex = totalChunks - 1; // ≥ 1 here because ≤CHUNK_SIZE returned above
 
-  for (let index = 0; index < totalChunks; index++) {
+  // Bytes confirmed per chunk → one smooth aggregate progress bar.
+  const confirmed = new Array<number>(totalChunks).fill(0);
+  let lastReported = -1;
+  const report = () => {
+    let bytes = 0;
+    for (let i = 0; i < totalChunks; i++) bytes += confirmed[i];
+    const percent = Math.min(99, Math.floor((bytes / asFile.size) * 100));
+    if (percent > lastReported) {
+      lastReported = percent;
+      onProgress(percent);
+    }
+  };
+
+  const sendChunk = (index: number): Promise<unknown> => {
     const blob = asFile.slice(index * CHUNK_SIZE, Math.min((index + 1) * CHUNK_SIZE, asFile.size));
     const fd = new FormData();
     fd.append("kind", "video");
@@ -101,15 +119,39 @@ async function uploadWithProgress<T>(
     fd.append("chunkIndex", String(index));
     fd.append("totalChunks", String(totalChunks));
     fd.append("file", blob, `${uploadId}.part${index}`);
-    const chunkResponse = await xhrSend<T & { received?: number }>(fd, (percent) => {
-      const overall = ((uploadedBytes + (percent / 100) * blob.size) / asFile.size) * 100;
-      onProgress(Math.min(99, Math.round(overall)));
+    return xhrSend(fd, (percent) => {
+      confirmed[index] = (percent / 100) * blob.size;
+      report();
+    }).then((res) => {
+      confirmed[index] = blob.size;
+      report();
+      return res;
     });
-    uploadedBytes += blob.size;
-    if (index === totalChunks - 1) result = chunkResponse;
-  }
+  };
 
-  if (!result) throw new Error("Upload did not finish — please retry.");
+  // Parallel workers pull chunk indices from a shared cursor.
+  let next = 0;
+  const workers = Array.from({ length: Math.min(CHUNK_CONCURRENCY, lastIndex) }, async () => {
+    while (next < lastIndex) {
+      const index = next++;
+      await sendChunk(index);
+    }
+  });
+  await Promise.all(workers);
+
+  // Final chunk — sent only after every other chunk is confirmed on the server.
+  const finalBlob = asFile.slice(lastIndex * CHUNK_SIZE, asFile.size);
+  const finalFd = new FormData();
+  finalFd.append("kind", "video");
+  finalFd.append("uploadId", uploadId);
+  finalFd.append("chunkIndex", String(lastIndex));
+  finalFd.append("totalChunks", String(totalChunks));
+  finalFd.append("file", finalBlob, `${uploadId}.part${lastIndex}`);
+  const result = await xhrSend<T>(finalFd, (percent) => {
+    confirmed[lastIndex] = (percent / 100) * finalBlob.size;
+    report();
+  });
+
   onProgress(100);
   return result;
 }
