@@ -319,6 +319,69 @@
     transform: scaleX(1);
     transform-origin: left;
   }
+
+  /* ---- scroll-reveal system (one shared IntersectionObserver + CSS) ----
+     The hidden state is applied by JS ONLY (data-reveal / data-words-pre are
+     set in primitives.tsx effects, never in the SSR markup), so content is
+     always visible without JavaScript. The shared observer flips
+     data-reveal-state="in" / removes data-words-pre when the element enters
+     the viewport, and CSS transitions do the animating (transform + opacity
+     only — compositor-friendly, no per-element framer observers). */
+  [data-reveal] {
+    transition:
+      opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+      filter 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+  [data-reveal="up"] {
+    opacity: 0;
+    transform: translateY(var(--reveal-y, 28px));
+  }
+  [data-reveal="blur"] {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(9px);
+  }
+  [data-reveal="scale"] {
+    opacity: 0;
+    transform: translateY(16px) scale(0.94);
+  }
+  [data-reveal="left"] {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  [data-reveal="right"] {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  /* revealed — higher specificity (two attributes) wins over the variants */
+  [data-reveal][data-reveal-state="in"] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  /* word-by-word masked reveal (WordsReveal) — per-word stagger via --wr-i */
+  .words-reveal-word {
+    transition: transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: calc(var(--wr-delay, 0ms) + var(--wr-i, 0) * var(--wr-stagger, 55ms));
+  }
+  .words-reveal[data-words-pre="true"] .words-reveal-word {
+    transform: translateY(115%);
+  }
+
+  /* reduced motion: JS already skips hiding, this is the no-JS/edge-case belt
+     — content must never be trapped invisible */
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal],
+    .words-reveal[data-words-pre="true"] .words-reveal-word {
+      opacity: 1;
+      transform: none;
+      filter: none;
+      transition: none;
+    }
+  }
 }
 
 /* focus visibility: volt outline + ink inner ring so the indicator stays

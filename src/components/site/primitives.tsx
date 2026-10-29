@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   motion,
-  useInView,
   useMotionValue,
   useSpring,
   useScroll,
@@ -14,6 +13,7 @@ import {
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "@/lib/router";
 import { useSite } from "@/components/site/site-context";
+import { isInViewport, onEnterView } from "@/lib/in-view";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -23,18 +23,28 @@ import { cn } from "@/lib/utils";
 
 export const EASE = [0.22, 1, 0.36, 1] as const;
 
+// useLayoutEffect on the client (applies the hidden state BEFORE the first
+// paint, so nothing flashes), plain useEffect on the server (no-op there).
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 /* ------------------------------------------------------------------ Reveal */
 
 export type RevealVariant = "up" | "blur" | "scale" | "left" | "right";
 
-const REVEAL_VARIANTS: Record<RevealVariant, { opacity: number; y?: number; x?: number; scale?: number; filter?: string }> = {
-  up: { opacity: 0, y: 28 },
-  blur: { opacity: 0, y: 18, filter: "blur(9px)" },
-  scale: { opacity: 0, y: 16, scale: 0.94 },
-  left: { opacity: 0, x: -40 },
-  right: { opacity: 0, x: 40 },
-};
-
+/**
+ * Scroll-triggered entrance, driven by ONE shared IntersectionObserver + CSS
+ * transitions (see src/lib/in-view.ts + the [data-reveal] rules in
+ * globals.css). Replaces the old framer-motion whileInView version whose
+ * per-element observers could miss and leave content stuck at opacity:0.
+ *
+ * Failure-proof by design — the hidden state is applied by JS only and has
+ * four safety nets, so the worst case is "appears without animation",
+ * never "invisible forever":
+ *   1. SSR markup is fully visible (no opacity:0 in the HTML — no-JS safe).
+ *   2. Without IntersectionObserver support nothing is ever hidden.
+ *   3. prefers-reduced-motion forces visibility in CSS regardless of JS.
+ *   4. A watchdog reveals any element still hidden while on screen.
+ */
 export function Reveal({
   children,
   delay = 0,
@@ -47,24 +57,64 @@ export function Reveal({
   delay?: number;
   y?: number;
   className?: string;
+  /** Kept for API compatibility — reveals are permanent (no consumers re-hide). */
   once?: boolean;
   variant?: RevealVariant;
 }) {
-  // NOTE: never branch the returned tree on useReducedMotion() — the hook is
-  // null on the server but real on the client, and a motion.div <-> div swap
-  // shifts the fiber tree, breaking SSR hydration (Radix useId mismatch).
-  // Reduced motion is handled globally by <MotionConfig reducedMotion="user">.
-  const from = variant === "up" ? { opacity: 0, y } : REVEAL_VARIANTS[variant];
+  const ref = useRef<HTMLDivElement>(null);
+
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // reduced motion / old browsers: keep content fully visible (CSS also
+    // enforces this — see the prefers-reduced-motion block in globals.css)
+    if (typeof IntersectionObserver === "undefined") return;
+
+    // hidden state lives in dataset attributes, which React never rewrites
+    // (unlike classList — React re-applies className on prop changes)
+    el.dataset.reveal = variant;
+    if (variant === "up" && y !== 28) el.style.setProperty("--reveal-y", `${y}px`);
+    if (delay > 0) el.style.setProperty("--reveal-delay", `${Math.round(delay * 1000)}ms`);
+    el.getBoundingClientRect(); // commit the hidden state so the transition runs even if already on screen
+
+    let revealed = false;
+    let settleTimer = 0;
+    const show = () => {
+      if (revealed) return;
+      revealed = true;
+      el.dataset.revealState = "in";
+      if (once) stop();
+      // once the transition settles, strip the hooks so the element is back
+      // to plain CSS (no lingering transition-delay on hover styles etc.)
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        delete el.dataset.revealState;
+        delete el.dataset.reveal;
+        el.style.removeProperty("--reveal-delay");
+        el.style.removeProperty("--reveal-y");
+      }, 900 + delay * 1000);
+    };
+    const stop = onEnterView(el, show);
+    // safety net: if the event never fired but the element is on screen, show it
+    const watchdog = window.setTimeout(() => {
+      if (!revealed && isInViewport(el)) show();
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(watchdog);
+      window.clearTimeout(settleTimer);
+      stop();
+      delete el.dataset.revealState;
+      delete el.dataset.reveal;
+      el.style.removeProperty("--reveal-delay");
+      el.style.removeProperty("--reveal-y");
+    };
+  }, [variant, delay, y, once]);
+
   return (
-    <motion.div
-      className={className}
-      initial={from}
-      whileInView={{ opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }}
-      viewport={{ once, margin: "-60px" }}
-      transition={{ duration: 0.75, delay, ease: EASE }}
-    >
+    <div ref={ref} className={className}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
@@ -72,6 +122,11 @@ export function Reveal({
 /**
  * Word-by-word masked reveal driven by scroll position — each word slides up
  * out of its own overflow mask as the text enters the viewport.
+ *
+ * Same failure-proof pattern as Reveal: SSR markup renders the words fully
+ * visible; the hidden state is added by JS only (data-words-pre, CSS-driven
+ * stagger via --wr-i), the shared observer flips it, and a watchdog plus the
+ * prefers-reduced-motion CSS rule guarantee the text can never stay hidden.
  */
 export function WordsReveal({
   text,
@@ -86,33 +141,66 @@ export function WordsReveal({
   wordClassName?: string;
   delay?: number;
   stagger?: number;
+  /** Kept for API compatibility — reveals are permanent (no consumers re-hide). */
   once?: boolean;
 }) {
-  // tree structure must stay identical between SSR and hydration — reduced
-  // motion is handled globally by <MotionConfig reducedMotion="user">
   const ref = useRef<HTMLSpanElement>(null);
-  // observe the un-clipped container — masked inner spans are fully clipped
-  // by their overflow-hidden parents, so observing them directly can miss the
-  // "already in view at mount" case (e.g. hash-navigating to a new view)
-  const inView = useInView(ref, { once, margin: "-40px" });
   const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
 
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") return;
+    // observe the un-clipped container — masked inner spans are fully clipped
+    // by their overflow-hidden parents, so observing them directly can miss the
+    // "already in view at mount" case (e.g. hash-navigating to a new view)
+    el.dataset.wordsPre = "true";
+    el.style.setProperty("--wr-delay", `${Math.round(delay * 1000)}ms`);
+    el.style.setProperty("--wr-stagger", `${Math.round(stagger * 1000)}ms`);
+    el.getBoundingClientRect(); // commit the hidden state before revealing
+
+    let revealed = false;
+    let settleTimer = 0;
+    const show = () => {
+      if (revealed) return;
+      revealed = true;
+      delete el.dataset.wordsPre;
+      if (once) stop();
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        el.style.removeProperty("--wr-delay");
+        el.style.removeProperty("--wr-stagger");
+      }, 900 + (delay + words.length * stagger) * 1000);
+    };
+    const stop = onEnterView(el, show);
+    const watchdog = window.setTimeout(() => {
+      if (!revealed && isInViewport(el)) show();
+    }, 1200);
+
+    return () => {
+      window.clearTimeout(watchdog);
+      window.clearTimeout(settleTimer);
+      stop();
+      delete el.dataset.wordsPre;
+      el.style.removeProperty("--wr-delay");
+      el.style.removeProperty("--wr-stagger");
+    };
+  }, [text, delay, stagger, once, words.length]);
+
   return (
-    <span ref={ref} className={className}>
+    <span ref={ref} className={cn("words-reveal", className)}>
       {words.map((word, i) => (
         <span
           key={`${word}-${i}`}
           className="inline-block overflow-hidden pb-[0.12em] -mb-[0.12em] align-bottom"
         >
-          <motion.span
-            className={cn("inline-block will-change-transform", wordClassName)}
-            initial={{ y: "115%" }}
-            animate={inView ? { y: "0%" } : undefined}
-            transition={{ duration: 0.75, delay: delay + i * stagger, ease: EASE }}
+          <span
+            className={cn("words-reveal-word inline-block", wordClassName)}
+            style={{ "--wr-i": i } as CSSProperties}
           >
             {word}
             {i < words.length - 1 ? "\u00A0" : ""}
-          </motion.span>
+          </span>
         </span>
       ))}
     </span>
@@ -430,12 +518,12 @@ export function Marquee({ items, dark = true, className }: { items: string[]; da
 /* ----------------------------------------------------------------- Counter */
 export function Counter({ value, suffix, className }: { value: string; suffix?: string; className?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const inView = useInView(ref, { once: true, margin: "-40px" });
   const reduce = useReducedMotion();
   const numeric = parseFloat(value);
   const isNumeric = !isNaN(numeric) && isFinite(numeric);
   const [display, setDisplay] = useState(isNumeric ? "0" : value);
   const [seed, setSeed] = useState(value);
+  const [inView, setInView] = useState(false);
 
   // resync when the value prop changes (e.g. content refetch after admin
   // edits) — "adjust state during render" pattern, no effect needed
@@ -443,6 +531,18 @@ export function Counter({ value, suffix, className }: { value: string; suffix?: 
     setSeed(value);
     setDisplay(isNumeric ? "0" : value);
   }
+
+  // shared observer (one for the whole app) instead of a per-element
+  // framer useInView — callback is always async, so no sync setState
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const stop = onEnterView(el, () => {
+      stop();
+      setInView(true);
+    });
+    return stop;
+  }, []);
 
   useEffect(() => {
     if (!inView || !isNumeric) return;

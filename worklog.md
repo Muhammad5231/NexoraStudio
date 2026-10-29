@@ -464,3 +464,25 @@ Work Log:
 
 Stage Summary:
 - The hydration mismatch is now fixed at its TRUE root: a server≠client useSyncExternalStore snapshot forced React to abandon hydration every load. Rule (extends Task 17's): NEVER let a hook's server and client snapshots differ during hydration — flip post-mount state via effects only for non-structural values, and prefer AnimatePresence initial={false} over mounted-gated animation props. SSR ids and hydration ids now match byte-for-byte.
+
+---
+Task ID: 20
+Agent: Z.ai Code (main)
+Task: User report (Hinglish) — scroll animations repeatedly stop working ("baar baar scrolling animation kaam karna band kar deti hai"), and intermittently fail on desktop while working on mobile view.
+
+Work Log:
+- Root-cause analysis: every trigger-based reveal on the site funneled through framer-motion's per-element observation — `Reveal` (~90 usages site-wide via whileInView), `WordsReveal` + `Counter` (useInView). Two failure classes matched the symptoms exactly: (1) `initial={{opacity:0}}` styles are SSR'd INLINE, so any missed observer lifecycle (AnimatePresence route remounts, HMR/Fast-Refresh churn during long dev sessions, hydration timing) left that element at opacity:0 FOREVER — "animation band kar deti hai"; (2) ~90 separate IntersectionObservers + framer subscriptions + blur filters made desktop sessions (longer pages, weaker GPUs) choke first, while mobile's shorter page worked.
+- Fix — failure-proof reveal system, same visual design:
+  1. `src/lib/in-view.ts` (new): ONE shared IntersectionObserver for the whole app (rootMargin "0px 0px -8% 0px", threshold 0) + `onEnterView()` disposer API + synchronous `isInViewport()` fallback. No-IO browsers fire the callback via rAF so callers never hide content.
+  2. `Reveal` (primitives.tsx) rewritten: plain div + dataset attributes (`data-reveal="variant"`, `data-reveal-state="in"` — React never rewrites dataset, unlike classList which gets wiped when React re-applies a changed className). Hidden state applied in useIsoLayoutEffect (pre-paint, no flash) ONLY after JS confirms IO support; CSS transitions animate it (transform/opacity/filter only, compositor-friendly). Four safety nets so the worst case is "appears without animation", never "invisible": SSR markup fully visible (no-JS safe) → no IO = never hidden → prefers-reduced-motion CSS forces visibility → 1200ms in-viewport watchdog. Settle timer strips the attributes after the transition (no lingering transition-delay).
+  3. `WordsReveal`: framer stagger replaced by CSS calc stagger (`--wr-i` per word × `--wr-stagger`), same shared observer + watchdog; SSR words fully visible.
+  4. `Counter`: framer useInView replaced by the shared observer (setState only in async callback — lint-safe); rAF counting behavior unchanged.
+  5. `globals.css`: [data-reveal] variant rules + revealed-state override + words-reveal rules + a prefers-reduced-motion belt that force-shows any hidden element regardless of JS.
+  6. Structural hygiene: useReducedMotion branching fully removed from Reveal/WordsReveal (hydration rule from Task 17 still holds); `once` prop kept for API compatibility (no consumer re-hides).
+- Ops: Turbopack served a STALE globals.css (compiled chunk at 15:03 vs source edited 15:53 — CSS rules absent from document.styleSheets even though dev.log said "Compiled"). Known recovery applied: pkill next + rm -rf .next + restart. Sandbox reaps detached processes started in short-lived tool calls, so the verification ran server+browser inside ONE blocking call (server then persisted via the nohup setsid within it).
+- Verification (agent-browser, one blocking session): CSS emission confirmed in compiled chunks (8 rule hits); desktop 1440×900 — pre-scroll 61 elements correctly hidden below fold with computed opacity 0, full scroll pass to page bottom → 0 still-hidden, 0 words-pre, 0 stuck samples; /#/work route change → 0 stuck; home revisit → 0 console errors, 0 hydration warnings; mobile 390×844 full scroll → 0 stuck; screenshots confirm premium hero intact and mobile footer fully revealed. lint clean; tsc clean for src/ (pre-existing examples/skills errors only).
+
+Stage Summary:
+- The scroll-reveal layer is now structurally incapable of the reported bug: one shared observer (~90 → 1), CSS-only animations, hidden state applied by JS post-load with watchdog + reduced-motion + no-JS fallbacks. Animations replay on every route remount and survive HMR; content can never be trapped invisible on desktop or mobile.
+- Rule going forward: trigger-based reveals use the shared `onEnterView` util — do NOT reintroduce per-element observers or SSR'd opacity:0 (it ships invisible content whenever an observer lifecycle misses).
+- Ops note: when editing globals.css, if served styles look stale (rules missing from document.styleSheets despite "Compiled" in dev.log), the known fix is pkill next + rm -rf .next + restart.
