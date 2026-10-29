@@ -90,7 +90,7 @@
   }
   html {
     scroll-behavior: smooth;
-    /* keeps framer-motion's target-based useScroll measurements quiet —
+    /* keeps target-based scroll measurements quiet —
        the dev-only "non-static position" warning fires while <html> is static */
     position: relative;
   }

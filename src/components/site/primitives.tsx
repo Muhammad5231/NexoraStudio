@@ -1,19 +1,12 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import {
-  motion,
-  useMotionValue,
-  useSpring,
-  useScroll,
-  useTransform,
-  useReducedMotion,
-  type MotionValue,
-} from "framer-motion";
+import { motion, useMotionValue, useSpring, useReducedMotion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { Link } from "@/lib/router";
 import { useSite } from "@/components/site/site-context";
 import { isInViewport, onEnterView } from "@/lib/in-view";
+import { damp, elementProgress, trackScroll } from "@/lib/scroll-engine";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -211,45 +204,51 @@ export function WordsReveal({
 /**
  * Manifesto-style fill: words start dim and ink themselves in one by one as
  * the paragraph travels up the viewport (scroll-linked, not time-based).
+ *
+ * Driven by the shared scroll engine (live geometry every frame — cannot
+ * freeze the way framer's cached-offset useScroll could). SSR renders every
+ * word at the dim resting opacity on BOTH server and client (hydration-safe);
+ * reduced-motion users get full opacity set in a layout effect, pre-paint.
  */
+const FILL_DIM = 0.14;
+
 export function ScrollTextFill({ text, className }: { text: string; className?: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 0.92", "end 0.55"] });
   const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
+
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const spans = el.children; // one span per word, stable DOM nodes
+    const n = spans.length;
+    if (n === 0) return;
+    if (reduce) {
+      for (let i = 0; i < n; i++) (spans[i] as HTMLElement).style.opacity = "1";
+      return;
+    }
+    let prev = -1;
+    return trackScroll((f) => {
+      const p = elementProgress(el, f, { edge: "start", at: 0.92 }, { edge: "end", at: 0.55 });
+      if (p === prev) return;
+      prev = p;
+      for (let i = 0; i < n; i++) {
+        const start = i / n;
+        const end = Math.min(1, (i + 1.6) / n);
+        const local = end > start ? Math.min(1, Math.max(0, (p - start) / (end - start))) : p >= start ? 1 : 0;
+        (spans[i] as HTMLElement).style.opacity = (FILL_DIM + (1 - FILL_DIM) * local).toFixed(3);
+      }
+    });
+  }, [reduce, words.length]);
 
   return (
     <p ref={ref} className={cn("relative", className)}>
       {words.map((word, i) => (
-        <FillWord
-          key={`${word}-${i}`}
-          progress={scrollYProgress}
-          range={[i / words.length, Math.min(1, (i + 1.6) / words.length)]}
-          dim={reduce === true}
-        >
+        <span key={`${word}-${i}`} style={{ opacity: FILL_DIM }} className="mr-[0.26em] inline-block">
           {word}
-        </FillWord>
+        </span>
       ))}
     </p>
-  );
-}
-
-function FillWord({
-  progress,
-  range,
-  dim,
-  children,
-}: {
-  progress: MotionValue<number>;
-  range: [number, number];
-  dim: boolean;
-  children: string;
-}) {
-  const opacity = useTransform(progress, range, dim ? [1, 1] : [0.14, 1]);
-  return (
-    <motion.span style={{ opacity }} className="mr-[0.26em] inline-block">
-      {children}
-    </motion.span>
   );
 }
 
@@ -257,6 +256,9 @@ function FillWord({
 /**
  * Cinematic media reveal — content starts slightly zoomed-in / pushed down
  * inside an overflow mask and settles to rest as it enters the viewport.
+ * Shared scroll engine driven (see scroll-engine.ts). The initial transform
+ * renders identically on server and client; reduced-motion users get the
+ * identity transform in a layout effect, pre-paint (hydration-safe).
  */
 export function ScrollZoom({
   children,
@@ -268,16 +270,41 @@ export function ScrollZoom({
   zoom?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "start 0.3"] });
-  const scale = useTransform(scrollYProgress, [0, 1], reduce ? [1, 1] : [zoom, 1]);
-  const y = useTransform(scrollYProgress, [0, 1], reduce ? [0, 0] : [26, 0]);
+
+  useIsoLayoutEffect(() => {
+    const inner = innerRef.current;
+    const box = ref.current;
+    if (!inner || !box) return;
+    if (reduce) {
+      inner.style.transform = "";
+      return;
+    }
+    let prev = -1;
+    return trackScroll((f) => {
+      const p = elementProgress(box, f, { edge: "start", at: 1 }, { edge: "start", at: 0.3 });
+      if (p === prev) return;
+      prev = p;
+      if (p >= 1) {
+        inner.style.transform = "";
+        return;
+      }
+      const scale = zoom - (zoom - 1) * p;
+      const y = 26 * (1 - p);
+      inner.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
+    });
+  }, [reduce, zoom]);
 
   return (
     <div ref={ref} className={cn("relative overflow-hidden", className)}>
-      <motion.div style={{ scale, y }} className="h-full w-full will-change-transform">
+      <div
+        ref={innerRef}
+        className="h-full w-full will-change-transform"
+        style={{ transform: `translate3d(0, 26px, 0) scale(${zoom})` }}
+      >
         {children}
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -285,7 +312,7 @@ export function ScrollZoom({
 /* --------------------------------------------------------------- ScrollStrip */
 /**
  * Giant outlined display text that drifts horizontally, driven by the
- * page scroll. Purely decorative (aria-hidden).
+ * page scroll. Purely decorative (aria-hidden). Shared scroll engine driven.
  */
 export function ScrollStrip({
   text,
@@ -297,32 +324,69 @@ export function ScrollStrip({
   reverse?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
-  const x = useTransform(scrollYProgress, [0, 1], reduce ? ["0%", "0%"] : reverse ? ["-14%", "0%"] : ["0%", "-14%"]);
   const phrase = useMemo(() => Array(4).fill(text).join("\u00A0\u00A0\u00A0"), [text]);
+
+  useIsoLayoutEffect(() => {
+    const inner = innerRef.current;
+    const box = ref.current;
+    if (!inner || !box) return;
+    if (reduce) {
+      inner.style.transform = "";
+      return;
+    }
+    let prev = -1;
+    return trackScroll((f) => {
+      const p = elementProgress(box, f, { edge: "start", at: 1 }, { edge: "end", at: 0 });
+      if (p === prev) return;
+      prev = p;
+      const x = reverse ? -14 + 14 * p : -14 * p;
+      inner.style.transform = x === 0 ? "" : `translate3d(${x.toFixed(3)}%, 0, 0)`;
+    });
+  }, [reduce, reverse]);
 
   return (
     <div ref={ref} aria-hidden="true" className={cn("pointer-events-none select-none overflow-hidden", className)}>
-      <motion.div style={{ x }} className="text-outline whitespace-nowrap font-display font-bold leading-none tracking-tight">
+      <div
+        className="text-outline whitespace-nowrap font-display font-bold leading-none tracking-tight will-change-transform"
+        style={{ transform: "translate3d(0%, 0, 0)" }}
+      >
         {phrase}
-      </motion.div>
+      </div>
     </div>
   );
 }
 
 /* ------------------------------------------------------------ ScrollProgress */
-/** Scroll-linked progress bar pinned to the top of the viewport. */
+/**
+ * Scroll-linked progress bar pinned to the top of the viewport. Shared scroll
+ * engine driven with light lerp smoothing (the old framer spring, without the
+ * spring's ability to die). Always rendered (hydration-safe) — hidden for
+ * reduced-motion users via CSS.
+ */
 export function ScrollProgress() {
-  // always rendered (hydration-safe) — hidden for reduced-motion users via CSS
-  const { scrollYProgress } = useScroll();
-  const scaleX = useSpring(scrollYProgress, { stiffness: 140, damping: 26, mass: 0.4 });
+  const ref = useRef<HTMLDivElement>(null);
+
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let v = -1;
+    return trackScroll((f) => {
+      if (v < 0) v = f.page; // first frame snaps — no fly-in from 0
+      v = damp(v, f.page, 0.22);
+      if (Math.abs(f.page - v) < 0.0005) v = f.page;
+      el.style.transform = v <= 0 ? "scaleX(0)" : `scaleX(${v.toFixed(4)})`;
+      return v !== f.page; // keep animating while converging
+    });
+  }, []);
 
   return (
-    <motion.div
+    <div
+      ref={ref}
       aria-hidden="true"
       className="fixed inset-x-0 top-0 z-[80] h-0.5 origin-left bg-volt shadow-[0_0_14px_rgba(198,255,58,0.55)] motion-reduce:hidden"
-      style={{ scaleX }}
+      style={{ transform: "scaleX(0)" }}
     />
   );
 }
@@ -575,6 +639,12 @@ export function Counter({ value, suffix, className }: { value: string; suffix?: 
 }
 
 /* -------------------------------------------------------------- ParallaxImg */
+/**
+ * Slow vertical parallax drift on cover imagery. Shared scroll engine driven.
+ * The initial transform renders identically on server and client (fixes the
+ * old reduce-branched style prop — a hydration-visible conditional);
+ * reduced-motion keeps the 1.18 overscan (no edge gaps) minus the drift.
+ */
 export function ParallaxImg({
   src,
   alt,
@@ -591,16 +661,34 @@ export function ParallaxImg({
   priority?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
-  const y = useTransform(scrollYProgress, [0, 1], [-distance, distance]);
+
+  useIsoLayoutEffect(() => {
+    const img = imgRef.current;
+    const box = ref.current;
+    if (!img || !box) return;
+    if (reduce) {
+      img.style.transform = "scale(1.18)";
+      return;
+    }
+    let prev = -1;
+    return trackScroll((f) => {
+      const p = elementProgress(box, f, { edge: "start", at: 1 }, { edge: "end", at: 0 });
+      if (p === prev) return;
+      prev = p;
+      const y = -distance + 2 * distance * p;
+      img.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0) scale(1.18)`;
+    });
+  }, [reduce, distance]);
 
   return (
     <div ref={ref} className={cn("relative overflow-hidden", className)}>
-      <motion.img
+      <img
+        ref={imgRef}
         src={src}
         alt={alt}
-        style={reduce ? undefined : { y, scale: 1.18 }}
+        style={{ transform: `translate3d(0, ${-distance}px, 0) scale(1.18)` }}
         className={cn("h-full w-full object-cover", imgClassName)}
         loading={priority ? "eager" : "lazy"}
       />

@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef } from "react";
-import { motion, useMotionValue, useSpring, useScroll, useTransform, useReducedMotion } from "framer-motion";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "framer-motion";
 import { ArrowRight, ArrowUpRight, Check, Globe, Play, Plus } from "lucide-react";
 import {
   Accordion,
@@ -27,6 +27,11 @@ import {
   WordsReveal,
 } from "@/components/site/primitives";
 import { cn } from "@/lib/utils";
+import { damp, elementProgress, trackScroll } from "@/lib/scroll-engine";
+
+// useLayoutEffect on the client (applies scroll state BEFORE first paint),
+// plain useEffect on the server (no-op there).
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 // ---------------------------------------------------------------------------
 // HOME — cinematic hero, editorial sections, DB-driven work & services.
@@ -184,10 +189,27 @@ function Hero() {
   const sx = useSpring(mx, { stiffness: 60, damping: 18 });
   const sy = useSpring(my, { stiffness: 60, damping: 18 });
 
-  const { scrollYProgress } = useScroll();
-  const heroY = useTransform(scrollYProgress, [0, 0.3], [0, reduce ? 0 : -70]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.28], [1, reduce ? 1 : 0.35]);
-  const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, reduce ? 1 : 0.965]);
+  // hero drift on scroll — shared scroll engine (framer's useScroll version
+  // could freeze at a stale cached offset in long-lived tabs; see
+  // src/lib/scroll-engine.ts). Reduced motion: identity IS the correct rest
+  // state, so skipping the subscription is hydration-safe (no markup branch).
+  const heroRef = useRef<HTMLDivElement>(null);
+  useIsoLayoutEffect(() => {
+    const el = heroRef.current;
+    if (!el || reduce) return;
+    let prev = -1;
+    return trackScroll((f) => {
+      if (f.page === prev) return;
+      prev = f.page;
+      const pY = Math.min(1, f.page / 0.3);
+      const pO = Math.min(1, f.page / 0.28);
+      const y = -70 * pY;
+      const op = 1 - 0.65 * pO;
+      const sc = 1 - 0.035 * pY;
+      el.style.transform = pY <= 0 ? "" : `translate3d(0, ${y.toFixed(2)}px, 0) scale(${sc.toFixed(4)})`;
+      el.style.opacity = pO <= 0 ? "" : op.toFixed(3);
+    });
+  }, [reduce]);
   const sxInvert = useTransform(sx, (v) => -v * 0.55);
   const syInvert = useTransform(sy, (v) => -v * 0.55);
 
@@ -223,10 +245,7 @@ function Hero() {
       {/* cursor spotlight — follows the pointer on fine-pointer devices */}
       <Spotlight />
 
-      <motion.div
-        style={{ y: heroY, opacity: heroOpacity, scale: heroScale }}
-        className="container-x relative z-10 flex flex-1 flex-col"
-      >
+      <div ref={heroRef} className="container-x relative z-10 flex flex-1 flex-col">
         <div className="grid flex-1 items-center gap-14 lg:grid-cols-12 lg:gap-8">
           {/* copy */}
           <div className="lg:col-span-7">
@@ -414,7 +433,7 @@ function Hero() {
           </span>
           <span className="font-display text-[10px] uppercase tracking-[0.25em] text-ivory/40">Scroll to explore</span>
         </motion.div>
-      </motion.div>
+      </div>
     </section>
   );
 }
@@ -735,8 +754,28 @@ function ProcessSection() {
   const { settings } = useSite();
   const h = settings.home;
   const lineRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({ target: lineRef, offset: ["start 0.85", "end 0.55"] });
-  const lineScale = useSpring(scrollYProgress, { stiffness: 90, damping: 22 });
+  const lineElRef = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+
+  // self-drawing volt line — shared scroll engine with lerp smoothing (the
+  // old framer spring could freeze at a stale cached offset in long-lived
+  // tabs; see src/lib/scroll-engine.ts). Hidden for reduced-motion via CSS.
+  useIsoLayoutEffect(() => {
+    const el = lineElRef.current;
+    const box = lineRef.current;
+    if (!el || !box || reduce) return;
+    let v = 0;
+    let prevP = -1;
+    return trackScroll((f) => {
+      const p = elementProgress(box, f, { edge: "start", at: 0.85 }, { edge: "end", at: 0.55 });
+      if (p === prevP && v === p) return;
+      prevP = p;
+      v = damp(v, p, 0.16);
+      if (Math.abs(p - v) < 0.001) v = p;
+      el.style.transform = v <= 0.001 ? "scaleX(0)" : `scaleX(${v.toFixed(4)})`;
+      return v !== p; // keep animating while converging
+    });
+  }, [reduce]);
 
   return (
     <section className="bg-ink py-20 sm:py-28">
@@ -748,8 +787,9 @@ function ProcessSection() {
           <div className="absolute left-0 right-0 top-7 hidden h-px bg-ivory/10 lg:block" aria-hidden="true" />
           {/* volt progress line — draws itself across the steps as you scroll.
               Always rendered (hydration-safe); hidden for reduced-motion via CSS. */}
-          <motion.div
-            style={{ scaleX: lineScale }}
+          <div
+            ref={lineElRef}
+            style={{ transform: "scaleX(0)" }}
             className="absolute left-0 right-0 top-7 hidden h-px origin-left bg-gradient-to-r from-volt via-volt/70 to-volt/15 lg:block motion-reduce:hidden"
             aria-hidden="true"
           />
