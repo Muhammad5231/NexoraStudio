@@ -431,3 +431,36 @@ Work Log:
 Stage Summary:
 - The FAQ hydration mismatch is fixed at its ROOT (structural reduced-motion branching), not papered over with suppressHydrationWarning. Rule going forward: NEVER branch the returned tree or hydration-visible props on useReducedMotion() — handle reduced motion via MotionConfig (animations), motion-reduce: Tailwind variants (visibility), or effects/post-mount state (values). Added inline comments at each previously-buggy site to lock the pattern in.
 - Reduced-motion users keep an accessible experience: framer skips transforms globally, purely decorative bars/lines hide via CSS, counters jump to final values, content is never trapped invisible.
+
+---
+Task ID: 18
+Agent: Z.ai Code (main)
+Task: User request (Hinglish) — "works me jo works ka showcase he usme admin see live website ka option rakho ye admin pe he ke vo ye rakhna cahta he ya nahi; to us website ka URL ke through koy bhi hamara works dekh sakta he" → per-project live website URL with an admin-controlled public visibility toggle.
+
+Work Log:
+- Schema: Project already had `liveUrl` (unused publicly); added `showLiveUrl Boolean @default(true)` (admin decides whether the link is exposed) + `bun run db:push`.
+- Types/validation: Project type gained `showLiveUrl`; projectSchema gained `showLiveUrl: z.boolean().optional()`.
+- API: POST /api/projects persists `showLiveUrl ?? true`; PATCH /api/projects/:id accepts it via boolFields. PUBLIC payloads strip the URL itself when hidden — getPublicContent() maps `showLiveUrl ? shaped : {…shaped, liveUrl: ""}` and the public branch of GET /api/projects does the same — so a hidden link is never leaked in the JSON, not merely hidden in the UI. Case-study "Visit live site" button respects the toggle automatically through the stripped payload.
+- Admin UI (projects.tsx): "Show live site link publicly — visitors can open the website from the Work showcase & case study" Switch rendered directly under the Live URL input, only when a URL is present; form state/normalize/defaults wired (`showLiveUrl: true` default).
+- Public UI: Work grid cards (work.tsx) and Home featured-work cards (home.tsx) render a volt-bordered "View live website ↗" pill (Globe + ArrowUpRight, min-h-[44px] touch target, `target="_blank" rel="noopener noreferrer"`, aria-label per project) placed OUTSIDE the card's case-study Link (no nested anchors), only when `showLiveUrl && liveUrl`.
+- Verified end-to-end (in-call server + curl + agent-browser): PATCH {liveUrl, showLiveUrl:true} → /api/content exposes the URL → /#/work shows the pill with correct href; PATCH {showLiveUrl:false} → URL STRIPPED from public payload (and link gone); restored true. Admin UI flow confirmed in browser (toggle appears once URL is typed, default checked).
+- Ops: first admin save hit PATCH 500 "Unknown argument showLiveUrl" — the long-running dev server held the pre-migration Prisma Client; dev-server restart with the regenerated client resolved it. Note: this sandbox reaps background processes when a tool call ends, so server lifecycle belongs to the blocking-call/watchdog pattern.
+
+Stage Summary:
+- Admin can now attach a deployed-site URL to any project and decide per-project whether visitors see it; hidden URLs are fully absent from public payloads. "View live website" pills appear on the Work showcase, Home featured work, and (unchanged) the case-study rail — all driven by the same two fields.
+
+---
+Task ID: 19
+Agent: Z.ai Code (main)
+Task: FAQ Accordion hydration mismatch — ROUND 2 root fix. Task 17 removed useReducedMotion branching, yet the console still reported server `radix-_R_hlbeindlb_` vs client `radix-_R_4darindlb_` (all 7 items). Live debugging exposed the REAL mechanism.
+
+Work Log:
+- Reproduced empirically: curl SSR HTML vs agent-browser DOM. SSR ids were tree-position ids (`_R_hlbe…`); the live DOM held counter ids (`radix-_r_0_ | _r_2_ | _r_4_…` — lowercase `_r_`, increments of 2 = trigger/content pairs).
+- Read React 19.2.3 mountId: during hydration (isHydrating) useId derives `_R_<tree-position>_`; only OUTSIDE hydration it generates `_r_<globalClientIdCounter>_`. Counter ids in the DOM ⇒ the accordion never rendered inside the hydration pass at all.
+- Root cause: SiteShell's `mounted` flag = useSyncExternalStore(subscribe noop, () => true, () => false). Server snapshot (false) ≠ client snapshot (true) on EVERY load ⇒ React's hydration bailout ("store changed between server render and hydration") discards the whole pass and re-renders the tree client-side ⇒ every useId is regenerated as a fresh counter ⇒ Radix rewrites id/aria-controls/aria-labelledby ⇒ the reported mismatch (with intermediate states also producing _R_ vs _R_ diffs depending on bailout timing).
+- Fix: deleted the flag entirely. AnimatePresence initial={false} already suppresses the enter animation on first mount, and later key changes animate via initial→animate unconditionally — so `initial={{opacity:0,y:14}}` / `exit={{opacity:0,y:-10}}` are now unconditional props (zero state, zero effect, zero bailout risk). Exhaustive comment left in site-shell.tsx explaining why a mounted flag must never return here (also documents that useState+useEffect trips react-hooks/set-state-in-effect — caught by lint on the intermediate attempt).
+- useSyncExternalStore audit: remaining uses (router.tsx useRoute, primitive hooks) have server/client snapshots that are referentially equal on `/` (EMPTY_ROUTE const), so no bailout on normal loads; hash deep-links legitimately re-render client-side.
+- Verification (agent-browser): client trigger id === SSR trigger id (`radix-_R_hlbeindlb_`, byte-identical for all items); accordion click opens with aria-controls↔content-id and aria-labelledby↔trigger-id consistent; nav transition to /#/work + live-site pill render with 0 console errors/mismatches; lint clean.
+
+Stage Summary:
+- The hydration mismatch is now fixed at its TRUE root: a server≠client useSyncExternalStore snapshot forced React to abandon hydration every load. Rule (extends Task 17's): NEVER let a hook's server and client snapshots differ during hydration — flip post-mount state via effects only for non-structural values, and prefer AnimatePresence initial={false} over mounted-gated animation props. SSR ids and hydration ids now match byte-for-byte.

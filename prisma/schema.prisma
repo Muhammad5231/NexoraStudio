@@ -79,6 +79,7 @@ model Project {
   coverImage      String   @default("")
   media           String   @default("[]") // JSON [{ url, type: image|video, caption? }]
   liveUrl         String   @default("")
+  showLiveUrl     Boolean  @default(true) // admin toggle: expose the live site link publicly (URL is stripped from public payload when false)
   featured        Boolean  @default(false)
   published       Boolean  @default(false)
   order           Int      @default(0)

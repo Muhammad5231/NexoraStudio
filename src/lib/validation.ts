@@ -78,6 +78,7 @@ export const projectSchema = z.object({
   coverImage: z.string().trim().max(600).optional().or(z.literal("")),
   media: z.array(mediaItemSchema).max(20).optional(),
   liveUrl: z.string().trim().max(400).optional().or(z.literal("")),
+  showLiveUrl: z.boolean().optional(),
   featured: z.boolean().optional(),
   published: z.boolean().optional(),
   order: z.number().int().min(0).max(999).optional(),

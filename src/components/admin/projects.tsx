@@ -66,6 +66,7 @@ type ProjectForm = {
   coverImage: string;
   media: ProjectMedia[];
   liveUrl: string;
+  showLiveUrl: boolean;
   featured: boolean;
   published: boolean;
   showInWork: boolean;
@@ -91,6 +92,7 @@ function emptyForm(): ProjectForm {
     coverImage: "",
     media: [],
     liveUrl: "",
+    showLiveUrl: true,
     featured: false,
     published: false,
     showInWork: true,
@@ -117,6 +119,7 @@ function toForm(p: Project): ProjectForm {
     coverImage: p.coverImage ?? "",
     media: p.media ?? [],
     liveUrl: p.liveUrl ?? "",
+    showLiveUrl: p.showLiveUrl ?? true,
     featured: p.featured,
     published: p.published,
     showInWork: p.showInWork,
@@ -555,6 +558,19 @@ export function ProjectEditor({ id }: { id?: string }) {
             <Field label="Live URL (optional)" htmlFor="p-liveurl" hint="Link to the deployed site, if it's public.">
               <Input id="p-liveurl" value={form.liveUrl} placeholder="https://…" onChange={(e) => set("liveUrl", e.target.value)} />
             </Field>
+            {form.liveUrl.trim() !== "" ? (
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="p-showliveurl"
+                  checked={form.showLiveUrl}
+                  onCheckedChange={(v) => set("showLiveUrl", v)}
+                  aria-label="Show live site link publicly"
+                />
+                <Label htmlFor="p-showliveurl" className="text-[13px] font-medium text-ink">
+                  Show live site link publicly — visitors can open the website from the Work showcase & case study
+                </Label>
+              </div>
+            ) : null}
           </div>
         </AdminCard>
 

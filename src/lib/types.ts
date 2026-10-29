@@ -132,6 +132,7 @@ export type Project = {
   coverImage: string;
   media: ProjectMedia[];
   liveUrl: string;
+  showLiveUrl: boolean; // admin toggle: false hides the live site link from the public site
   featured: boolean;
   published: boolean;
   showInWork: boolean; // false = hidden from the public Work grid (video-only work lives in the Gallery)

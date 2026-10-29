@@ -32,7 +32,10 @@ export async function GET(req: NextRequest) {
       },
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
     });
-    return ok({ projects: projects.map(shapeProject) });
+    const shaped = projects.map(shapeProject);
+    // public payload: drop live URLs the admin chose to hide
+    if (includeDrafts) return ok({ projects: shaped });
+    return ok({ projects: shaped.map((p) => (p.showLiveUrl ? p : { ...p, liveUrl: "" })) });
   } catch {
     return serverError("projects-get");
   }
@@ -76,6 +79,7 @@ export async function POST(req: NextRequest) {
         coverImage: d.coverImage ?? "",
         media: JSON.stringify(d.media ?? []),
         liveUrl: d.liveUrl ?? "",
+        showLiveUrl: d.showLiveUrl ?? true,
         featured: d.featured ?? false,
         published: d.published ?? false,
         showInWork: d.showInWork ?? true,

@@ -96,6 +96,7 @@ export function shapeProject(row: {
   coverImage: string;
   media: string;
   liveUrl: string;
+  showLiveUrl: boolean;
   featured: boolean;
   published: boolean;
   showInWork: boolean;
@@ -138,7 +139,12 @@ export async function getPublicContent(): Promise<SiteData> {
 
   return {
     settings,
-    projects: projects.map(shapeProject),
+    // Admin can keep a live URL on file but hide it from the public site —
+    // the URL itself is stripped from the public payload (not just the UI).
+    projects: projects.map((p) => {
+      const shaped = shapeProject(p);
+      return shaped.showLiveUrl ? shaped : { ...shaped, liveUrl: "" };
+    }),
     services: services.map(shapeService),
     faqs: faqs.map((f) => ({
       id: f.id,

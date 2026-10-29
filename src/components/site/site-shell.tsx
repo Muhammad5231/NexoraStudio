@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { MotionConfig, AnimatePresence, motion } from "framer-motion";
 import { SiteProvider } from "@/components/site/site-context";
 import { Nav } from "@/components/site/nav";
@@ -68,12 +68,18 @@ function trimDesc(text: string): string {
 export function SiteShell({ initial }: { initial: SiteData }) {
   const route = useRoute();
   const isAdmin = route.segments[0] === "admin";
-  // hydration-safe flag: false during SSR + first client render, true after
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
+  // NOTE on hydration: never branch this tree on a "mounted" flag.
+  // - A useSyncExternalStore flag (server false / client true) forces React's
+  //   hydration bailout on every load: the whole hydration pass is discarded
+  //   and re-rendered client-side, regenerating every useId as a fresh counter
+  //   value (_r_0_…) instead of the server's tree-position ids (_R_…). Radix
+  //   then rewrites the SSR id/aria-controls/aria-labelledby attributes →
+  //   "tree hydrated but attributes didn't match" console errors (seen on the
+  //   FAQ Accordion).
+  // - A useState+useEffect flag trips react-hooks/set-state-in-effect.
+  // AnimatePresence initial={false} already suppresses the enter animation on
+  // the first mount, and later key changes animate via initial→animate — so
+  // unconditional animation props give the identical behavior with zero state.
 
   // reset scroll on any path change (covers links, back/forward, manual hash)
   useEffect(() => {
@@ -214,9 +220,9 @@ export function SiteShell({ initial }: { initial: SiteData }) {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={route.path || "home"}
-                initial={mounted ? { opacity: 0, y: 14 } : false}
+                initial={{ opacity: 0, y: 14 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={mounted ? { opacity: 0, y: -10 } : undefined}
+                exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
               >
                 <Suspense fallback={<ViewSkeleton />}>{view}</Suspense>

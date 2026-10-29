@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef } from "react";
 import { motion, useMotionValue, useSpring, useScroll, useTransform, useReducedMotion } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Check, Play, Plus } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Globe, Play, Plus } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -526,6 +526,21 @@ function WorkSection({ projects }: { projects: ReturnType<typeof useSite>["proje
                   </div>
                 </div>
               </Link>
+
+              {/* admin-controlled live site link — opens the deployed project */}
+              {project.showLiveUrl && project.liveUrl ? (
+                <a
+                  href={project.liveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-full border border-ivory/15 px-4 py-2 font-display text-[11px] font-semibold uppercase tracking-[0.14em] text-ivory/70 transition-colors duration-300 hover:border-volt hover:text-volt"
+                  aria-label={`Open the live website of ${project.title} in a new tab`}
+                >
+                  <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+                  View live website
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </a>
+              ) : null}
             </Reveal>
           ))}
         </div>
