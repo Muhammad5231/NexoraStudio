@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, lazy, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { MotionConfig, AnimatePresence, motion } from "framer-motion";
 import { SiteProvider } from "@/components/site/site-context";
 import { Nav } from "@/components/site/nav";
 import { Footer } from "@/components/site/footer";
@@ -67,7 +67,6 @@ function trimDesc(text: string): string {
 
 export function SiteShell({ initial }: { initial: SiteData }) {
   const route = useRoute();
-  const reduce = useReducedMotion();
   const isAdmin = route.segments[0] === "admin";
   // hydration-safe flag: false during SSR + first client render, true after
   const mounted = useSyncExternalStore(
@@ -161,9 +160,11 @@ export function SiteShell({ initial }: { initial: SiteData }) {
 
   if (isAdmin) {
     return (
-      <Suspense fallback={<ViewSkeleton />}>
-        <AdminApp route={route} brandName={content.settings.brand.name} />
-      </Suspense>
+      <MotionConfig reducedMotion="user">
+        <Suspense fallback={<ViewSkeleton />}>
+          <AdminApp route={route} brandName={content.settings.brand.name} />
+        </Suspense>
+      </MotionConfig>
     );
   }
 
@@ -201,24 +202,30 @@ export function SiteShell({ initial }: { initial: SiteData }) {
 
   return (
     <SiteProvider data={content}>
-      <div className="flex min-h-screen flex-col bg-ink text-ivory">
-        <ScrollProgress />
-        <Nav />
-        <main className="flex-1">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={route.path || "home"}
-              initial={mounted && !reduce ? { opacity: 0, y: 14 } : false}
-              animate={{ opacity: 1, y: 0 }}
-              exit={mounted && !reduce ? { opacity: 0, y: -10 } : undefined}
-              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <Suspense fallback={<ViewSkeleton />}>{view}</Suspense>
-            </motion.div>
-          </AnimatePresence>
-        </main>
-        <Footer />
-      </div>
+      {/* Global reduced-motion handling: framer disables transform/layout
+          animations for users with prefers-reduced-motion without any
+          structural render branching (which would break SSR hydration and
+          shift Radix useId values). */}
+      <MotionConfig reducedMotion="user">
+        <div className="flex min-h-screen flex-col bg-ink text-ivory">
+          <ScrollProgress />
+          <Nav />
+          <main className="flex-1">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={route.path || "home"}
+                initial={mounted ? { opacity: 0, y: 14 } : false}
+                animate={{ opacity: 1, y: 0 }}
+                exit={mounted ? { opacity: 0, y: -10 } : undefined}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <Suspense fallback={<ViewSkeleton />}>{view}</Suspense>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+          <Footer />
+        </div>
+      </MotionConfig>
     </SiteProvider>
   );
 }

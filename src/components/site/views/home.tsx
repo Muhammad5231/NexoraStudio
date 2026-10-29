@@ -224,7 +224,7 @@ function Hero() {
       <Spotlight />
 
       <motion.div
-        style={reduce ? undefined : { y: heroY, opacity: heroOpacity, scale: heroScale }}
+        style={{ y: heroY, opacity: heroOpacity, scale: heroScale }}
         className="container-x relative z-10 flex flex-1 flex-col"
       >
         <div className="grid flex-1 items-center gap-14 lg:grid-cols-12 lg:gap-8">
@@ -323,7 +323,7 @@ function Hero() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 1, delay: 0.35, ease: EASE }}
           >
-            <motion.div style={reduce ? undefined : { x: sx, y: sy }} className="relative mx-auto w-full max-w-[560px]">
+            <motion.div style={{ x: sx, y: sy }} className="relative mx-auto w-full max-w-[560px]">
               {/* ambient volt glow — lifts the stack off the ink backdrop */}
               <div aria-hidden="true" className="absolute -inset-10 rounded-[2.5rem] bg-volt/[0.07] blur-[70px]" />
 
@@ -365,7 +365,7 @@ function Hero() {
               {/* reel card — video work */}
               <motion.div
                 className="absolute -bottom-8 -left-3 w-28 sm:-bottom-10 sm:-left-7 sm:w-36"
-                style={reduce ? undefined : { x: sxInvert, y: syInvert }}
+                style={{ x: sxInvert, y: syInvert }}
               >
                 <div className="group/reel relative">
                   <div aria-hidden="true" className="absolute -inset-3.5 rounded-2xl bg-volt/[0.16] blur-xl" />
@@ -720,7 +720,6 @@ function ProcessSection() {
   const { settings } = useSite();
   const h = settings.home;
   const lineRef = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: lineRef, offset: ["start 0.85", "end 0.55"] });
   const lineScale = useSpring(scrollYProgress, { stiffness: 90, damping: 22 });
 
@@ -732,14 +731,13 @@ function ProcessSection() {
         <div ref={lineRef} className="relative mt-16 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
           {/* connecting line (desktop) — base track */}
           <div className="absolute left-0 right-0 top-7 hidden h-px bg-ivory/10 lg:block" aria-hidden="true" />
-          {/* volt progress line — draws itself across the steps as you scroll */}
-          {reduce ? null : (
-            <motion.div
-              style={{ scaleX: lineScale }}
-              className="absolute left-0 right-0 top-7 hidden h-px origin-left bg-gradient-to-r from-volt via-volt/70 to-volt/15 lg:block"
-              aria-hidden="true"
-            />
-          )}
+          {/* volt progress line — draws itself across the steps as you scroll.
+              Always rendered (hydration-safe); hidden for reduced-motion via CSS. */}
+          <motion.div
+            style={{ scaleX: lineScale }}
+            className="absolute left-0 right-0 top-7 hidden h-px origin-left bg-gradient-to-r from-volt via-volt/70 to-volt/15 lg:block motion-reduce:hidden"
+            aria-hidden="true"
+          />
           {h.processSteps.map((step, i) => (
             <Reveal key={i} delay={0.08 * i} variant="blur">
               <div className="relative">

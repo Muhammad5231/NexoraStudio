@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ENQUIRY_STATUS_LABELS } from "@/lib/types";
@@ -179,8 +179,7 @@ export function FadeUp({
   i?: number;
   className?: string;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) return <div className={className}>{children}</div>;
+  // reduced motion is handled globally by <MotionConfig reducedMotion="user">
   return (
     <motion.div
       className={className}

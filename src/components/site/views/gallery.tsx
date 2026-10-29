@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Clock3, Film, Images, Play } from "lucide-react";
 import { useSite, waLink } from "@/components/site/site-context";
 import { Chip, EASE, PageHeader, Reveal, VoltButton } from "@/components/site/primitives";
@@ -200,7 +200,6 @@ function PhotoLightbox({
 /* ------------------------------------------------------------------- view */
 export default function GalleryView() {
   const { settings, gallery } = useSite();
-  const reduce = useReducedMotion();
   const [filter, setFilter] = useState<Filter>("all");
   const [activeVideo, setActiveVideo] = useState<GalleryItem | null>(null);
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
@@ -281,9 +280,9 @@ export default function GalleryView() {
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={filter}
-              initial={reduce ? false : { opacity: 0, y: 12 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={reduce ? undefined : { opacity: 0, y: -8 }}
+              exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3, ease: EASE }}
             >
               {isEmpty ? (

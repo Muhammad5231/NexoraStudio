@@ -50,8 +50,10 @@ export function Reveal({
   once?: boolean;
   variant?: RevealVariant;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) return <div className={className}>{children}</div>;
+  // NOTE: never branch the returned tree on useReducedMotion() — the hook is
+  // null on the server but real on the client, and a motion.div <-> div swap
+  // shifts the fiber tree, breaking SSR hydration (Radix useId mismatch).
+  // Reduced motion is handled globally by <MotionConfig reducedMotion="user">.
   const from = variant === "up" ? { opacity: 0, y } : REVEAL_VARIANTS[variant];
   return (
     <motion.div
@@ -86,15 +88,14 @@ export function WordsReveal({
   stagger?: number;
   once?: boolean;
 }) {
-  const reduce = useReducedMotion();
+  // tree structure must stay identical between SSR and hydration — reduced
+  // motion is handled globally by <MotionConfig reducedMotion="user">
   const ref = useRef<HTMLSpanElement>(null);
   // observe the un-clipped container — masked inner spans are fully clipped
   // by their overflow-hidden parents, so observing them directly can miss the
   // "already in view at mount" case (e.g. hash-navigating to a new view)
   const inView = useInView(ref, { once, margin: "-40px" });
   const words = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
-
-  if (reduce) return <span className={className}>{text}</span>;
 
   return (
     <span ref={ref} className={className}>
@@ -225,15 +226,14 @@ export function ScrollStrip({
 /* ------------------------------------------------------------ ScrollProgress */
 /** Scroll-linked progress bar pinned to the top of the viewport. */
 export function ScrollProgress() {
-  const reduce = useReducedMotion();
+  // always rendered (hydration-safe) — hidden for reduced-motion users via CSS
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, { stiffness: 140, damping: 26, mass: 0.4 });
 
-  if (reduce) return null;
   return (
     <motion.div
       aria-hidden="true"
-      className="fixed inset-x-0 top-0 z-[80] h-0.5 origin-left bg-volt shadow-[0_0_14px_rgba(198,255,58,0.55)]"
+      className="fixed inset-x-0 top-0 z-[80] h-0.5 origin-left bg-volt shadow-[0_0_14px_rgba(198,255,58,0.55)] motion-reduce:hidden"
       style={{ scaleX }}
     />
   );
@@ -251,18 +251,8 @@ export function StaggeredLines({
   lineClassName?: string;
   delay?: number;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) {
-    return (
-      <div className={className}>
-        {lines.map((l, i) => (
-          <div key={i} className={lineClassName}>
-            {l}
-          </div>
-        ))}
-      </div>
-    );
-  }
+  // always render the motion tree (hydration-safe); reduced motion is
+  // handled globally by <MotionConfig reducedMotion="user">
   return (
     <div className={className}>
       {lines.map((line, i) => (
@@ -455,10 +445,17 @@ export function Counter({ value, suffix, className }: { value: string; suffix?: 
   }
 
   useEffect(() => {
-    if (!inView || !isNumeric || reduce) return;
+    if (!inView || !isNumeric) return;
+    let raf = 0;
+    // reduced motion: show the final value instantly (next frame — avoids
+    // synchronous setState in the effect; render stays hydration-stable,
+    // server and client both render "0" first)
+    if (reduce) {
+      raf = requestAnimationFrame(() => setDisplay(String(numeric)));
+      return () => cancelAnimationFrame(raf);
+    }
     const duration = 1200;
     const start = performance.now();
-    let raf = 0;
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - p, 3);
@@ -469,11 +466,9 @@ export function Counter({ value, suffix, className }: { value: string; suffix?: 
     return () => cancelAnimationFrame(raf);
   }, [inView, isNumeric, numeric, reduce]);
 
-  const shown = reduce && isNumeric ? String(numeric) : display;
-
   return (
     <span ref={ref} className={className}>
-      {shown}
+      {display}
       {suffix}
     </span>
   );

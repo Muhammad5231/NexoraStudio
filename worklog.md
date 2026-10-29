@@ -411,3 +411,23 @@ Stage Summary:
 - The whole public site now has a cohesive scroll-motion layer: progress bar, word-mask section titles everywhere (via SectionHead/PageHeader), fill-in manifesto text, cinematic media zooms, self-drawing process line, drifting brand watermarks — all reduced-motion aware and transform/opacity-only (no layout thrash).
 - Hero is now premium-tier: kinetic typography, aurora + spotlight atmosphere, rotating orbit badge, shine sweep, refined scroll cue — all driven by the same admin-managed content fields (no new settings required).
 - Known-good pattern to keep: masked text reveals must observe an un-clipped ancestor (useInView + animate), never whileInView on the masked node itself.
+
+---
+Task ID: 17
+Agent: Z.ai Code (main)
+Task: User-reported console error — Radix accordion hydration mismatch ("A tree hydrated but some attributes of the server rendered HTML didn't match the client properties") on the home page FAQ section.
+
+Work Log:
+- Root cause: `Reveal` (primitives.tsx) branched its returned tree on `useReducedMotion()` — the hook returns `null` on the server but the REAL media-query value on the client. For users with `prefers-reduced-motion: reduce`, SSR rendered `motion.div` while hydration rendered a plain `div` (and vice versa in other components). That fiber-structure swap shifts React `useId` positions, so every Radix accordion `id`/`aria-controls`/`aria-labelledby` under it diverged. FaqSection wraps each AccordionItem in `Reveal` — exactly the reported diff. Same bug class audited across the codebase: WordsReveal (`if (reduce) return <span>text</span>`), ScrollProgress (`if (reduce) return null`), StaggeredLines (plain vs motion divs), ProcessSection volt line (`reduce ? null : <motion.div>`), admin-ui FadeIn, plus prop-level style/initial conditionals in Hero (style={reduce ? undefined : …}) and nav/gallery/site-shell.
+- Fix strategy (hydration-safe patterns, no behavior regression for motion-reduce users):
+  1. `<MotionConfig reducedMotion="user">` now wraps BOTH the public site and the admin app in site-shell.tsx — framer itself skips transform/layout animations for reduced-motion users with ZERO render branching (opacity fades remain, framer's official behavior).
+  2. Reveal / WordsReveal / StaggeredLines / admin FadeIn: structural early-returns removed — the motion tree renders unconditionally, identical on server and client.
+  3. ScrollProgress + ProcessSection volt line: always rendered, hidden for reduced-motion via Tailwind `motion-reduce:hidden` (class string identical on both sides; browser applies CSS).
+  4. Counter: render stays hydration-stable ("0" on server AND client first paint); reduced-motion path now shows the final value via requestAnimationFrame inside the existing effect (also satisfies the new react-hooks/set-state-in-effect lint rule — no synchronous setState in effects).
+  5. Hero: `style={reduce ? undefined : {…}}` conditionals replaced with unconditional style objects — the parallax MotionValues (heroY/heroOpacity/heroScale, mouse springs) already collapse to neutral constants for reduced users, and springs start at 0, so server HTML now matches client exactly (also fixes a latent reduced-motion glitch where the ambient glow parked at origin instead of offscreen).
+  6. site-shell view-transition initial/exit simplified to the `mounted` gate only (reduce check redundant under MotionConfig); nav mobile-menu label + gallery filter transition conditionals dropped the same way.
+- Verification (agent-browser): fresh load of / — console clean, ZERO hydration errors; programmatic check — all 7 FAQ accordion trigger/content aria-controls↔id↔aria-labelledby pairs consistent; click test — first question opens (data-state=open, content visible); full-page scroll pass — no errors, reveals fire, footer sticky OK; hero screenshot — premium hero + clamp fix intact; /#/admin — loads clean under the MotionConfig wrap. lint clean; tsc clean for src/ (pre-existing examples/skills errors unrelated).
+
+Stage Summary:
+- The FAQ hydration mismatch is fixed at its ROOT (structural reduced-motion branching), not papered over with suppressHydrationWarning. Rule going forward: NEVER branch the returned tree or hydration-visible props on useReducedMotion() — handle reduced motion via MotionConfig (animations), motion-reduce: Tailwind variants (visibility), or effects/post-mount state (values). Added inline comments at each previously-buggy site to lock the pattern in.
+- Reduced-motion users keep an accessible experience: framer skips transforms globally, purely decorative bars/lines hide via CSS, counters jump to final values, content is never trapped invisible.

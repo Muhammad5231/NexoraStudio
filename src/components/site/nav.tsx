@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpRight, Menu, X, Instagram, Linkedin, Youtube, Globe } from "lucide-react";
 import { Link, useRoute } from "@/lib/router";
 import { useSite, waLink } from "@/components/site/site-context";
@@ -36,7 +36,6 @@ export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const route = useRoute();
-  const reduce = useReducedMotion();
   const { settings } = useSite();
   const isHome = route.path === "";
   const burgerRef = useRef<HTMLButtonElement>(null);
@@ -172,8 +171,8 @@ export function Nav() {
                   {NAV_LINKS.map((link, i) => (
                     <li key={link.href} className="overflow-hidden">
                       <motion.div
-                        initial={reduce ? undefined : { y: "110%" }}
-                        animate={reduce ? undefined : { y: 0 }}
+                        initial={{ y: "110%" }}
+                        animate={{ y: 0 }}
                         transition={{ duration: 0.7, delay: 0.08 + i * 0.07, ease: EASE }}
                       >
                         <Link
